@@ -1,6 +1,6 @@
 {
-    "model_name": "Qwen/Qwen3-0.6B",
-    "evaluated_at": "2025-08-26T12:25:11",
+    "model_name": "../Models/Qwen3-0.6B-arc_SFT_QLORA/checkpoint-1",
+    "evaluated_at": "2025-08-26T12:24:43",
     "summary": {
         "num_datasets": 3,
         "total_samples": 6,
@@ -8,18 +8,18 @@
         "total_incorrect": 2,
         "overall_accuracy": 66.67,
         "latency_seconds": {
-            "sum": 26.1325,
-            "mean": 4.3554,
-            "median": 3.3201,
-            "mode": 3.918,
-            "std": 3.2296
+            "sum": 33.9639,
+            "mean": 5.6606,
+            "median": 4.396,
+            "mode": 4.729,
+            "std": 3.4227
         },
         "tokens_generated": {
-            "sum": 155,
-            "mean": 25.83,
+            "sum": 215,
+            "mean": 35.83,
             "median": 5.5,
             "mode": 5,
-            "std": 48.13
+            "std": 50.15
         }
     },
     "datasets": {
@@ -46,14 +46,14 @@
             },
             "latency_seconds": {
                 "per_prompt": [
-                    3.9181,
-                    3.7681
+                    4.7288,
+                    4.0632
                 ],
-                "sum": 7.6863,
-                "mean": 3.8431,
-                "median": 3.8431,
-                "mode": 3.918,
-                "std": 0.1061
+                "sum": 8.7921,
+                "mean": 4.396,
+                "median": 4.396,
+                "mode": 4.729,
+                "std": 0.4706
             },
             "tokens_generated": {
                 "per_prompt": [
@@ -86,14 +86,14 @@
             },
             "latency_seconds": {
                 "per_prompt": [
-                    2.7974,
-                    2.8721
+                    3.0041,
+                    3.114
                 ],
-                "sum": 5.6695,
-                "mean": 2.8348,
-                "median": 2.8348,
-                "mode": 2.797,
-                "std": 0.0528
+                "sum": 6.1181,
+                "mean": 3.0591,
+                "median": 3.0591,
+                "mode": 3.004,
+                "std": 0.0777
             },
             "tokens_generated": {
                 "per_prompt": [
@@ -169,25 +169,25 @@
             },
             "latency_seconds": {
                 "per_prompt": [
-                    1.9882,
-                    10.7884
+                    7.1064,
+                    11.9473
                 ],
-                "sum": 12.7767,
-                "mean": 6.3883,
-                "median": 6.3883,
-                "mode": 1.988,
-                "std": 6.2227
+                "sum": 19.0537,
+                "mean": 9.5269,
+                "median": 9.5269,
+                "mode": 7.106,
+                "std": 3.4231
             },
             "tokens_generated": {
                 "per_prompt": [
-                    10,
-                    124
+                    71,
+                    123
                 ],
-                "sum": 134,
-                "mean": 67.0,
-                "median": 67.0,
-                "mode": 10,
-                "std": 80.61
+                "sum": 194,
+                "mean": 97.0,
+                "median": 97.0,
+                "mode": 71,
+                "std": 36.77
             }
         }
     }

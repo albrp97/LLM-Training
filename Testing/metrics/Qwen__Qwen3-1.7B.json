@@ -1,28 +1,112 @@
 {
     "model_name": "Qwen/Qwen3-1.7B",
-    "evaluated_at": "2025-08-14T12:31:58",
+    "evaluated_at": "2025-08-26T12:24:07",
     "summary": {
         "num_datasets": 3,
         "total_samples": 6,
-        "total_correct": 3,
-        "total_incorrect": 3,
-        "overall_accuracy": 50.0,
+        "total_correct": 2,
+        "total_incorrect": 4,
+        "overall_accuracy": 33.33,
         "latency_seconds": {
-            "sum": 17.0659,
-            "mean": 2.8443,
-            "median": 0.4331,
-            "mode": 9.777,
-            "std": 4.097
+            "sum": 128.8972,
+            "mean": 21.4829,
+            "median": 11.4351,
+            "mode": 9.786,
+            "std": 19.7736
         },
         "tokens_generated": {
-            "sum": 430,
-            "mean": 71.67,
-            "median": 7.0,
+            "sum": 446,
+            "mean": 74.33,
+            "median": 3.0,
             "mode": 1,
-            "std": 109.41
+            "std": 118.52
         }
     },
     "datasets": {
+        "test-boolq.parquet": {
+            "type": "boolq",
+            "total_samples": 2,
+            "format_success_rate": 0.0,
+            "correct": 0,
+            "incorrect": 2,
+            "accuracy": 0.0,
+            "metrics": {
+                "task": "BoolQ (binary)",
+                "f1_pos": 0.0,
+                "macro_f1": 0.0,
+                "balanced_accuracy": 0.0,
+                "MCC": -1.0,
+                "confusion_matrix": {
+                    "TP": 0,
+                    "TN": 0,
+                    "FP": 1,
+                    "FN": 1
+                },
+                "support": 2
+            },
+            "latency_seconds": {
+                "per_prompt": [
+                    9.7863,
+                    9.9922
+                ],
+                "sum": 19.7785,
+                "mean": 9.8892,
+                "median": 9.8892,
+                "mode": 9.786,
+                "std": 0.1456
+            },
+            "tokens_generated": {
+                "per_prompt": [
+                    1,
+                    1
+                ],
+                "sum": 2,
+                "mean": 1.0,
+                "median": 1.0,
+                "mode": 1,
+                "std": 0.0
+            }
+        },
+        "test-squad_v2.parquet": {
+            "type": "squad_v2",
+            "total_samples": 2,
+            "format_success_rate": 0.0,
+            "correct": 0,
+            "incorrect": 2,
+            "accuracy": 0.0,
+            "metrics": {
+                "task": "SQuAD v2",
+                "EM": 0.0,
+                "F1": 0.0,
+                "HasAns_EM": 0.0,
+                "HasAns_F1": 0.0,
+                "NoAns_Accuracy": 0.0,
+                "AvNA_Accuracy": 0.0,
+                "support": 2
+            },
+            "latency_seconds": {
+                "per_prompt": [
+                    7.9946,
+                    12.8781
+                ],
+                "sum": 20.8726,
+                "mean": 10.4363,
+                "median": 10.4363,
+                "mode": 7.995,
+                "std": 3.4532
+            },
+            "tokens_generated": {
+                "per_prompt": [
+                    1,
+                    5
+                ],
+                "sum": 6,
+                "mean": 3.0,
+                "median": 3.0,
+                "mode": 1,
+                "std": 2.83
+            }
+        },
         "test-ai2_arc.parquet": {
             "type": "mcq4",
             "total_samples": 2,
@@ -85,109 +169,25 @@
             },
             "latency_seconds": {
                 "per_prompt": [
-                    9.7771,
-                    6.0281
+                    58.3534,
+                    29.8927
                 ],
-                "sum": 15.8052,
-                "mean": 7.9026,
-                "median": 7.9026,
-                "mode": 9.777,
-                "std": 2.651
+                "sum": 88.246,
+                "mean": 44.123,
+                "median": 44.123,
+                "mode": 58.353,
+                "std": 20.1248
             },
             "tokens_generated": {
                 "per_prompt": [
-                    256,
+                    280,
                     158
                 ],
-                "sum": 414,
-                "mean": 207.0,
-                "median": 207.0,
-                "mode": 256,
-                "std": 69.3
-            }
-        },
-        "test-boolq.parquet": {
-            "type": "boolq",
-            "total_samples": 2,
-            "format_success_rate": 0.0,
-            "correct": 0,
-            "incorrect": 2,
-            "accuracy": 0.0,
-            "metrics": {
-                "task": "BoolQ (binary)",
-                "f1_pos": 0.0,
-                "macro_f1": 0.0,
-                "balanced_accuracy": 0.0,
-                "MCC": -1.0,
-                "confusion_matrix": {
-                    "TP": 0,
-                    "TN": 0,
-                    "FP": 1,
-                    "FN": 1
-                },
-                "support": 2
-            },
-            "latency_seconds": {
-                "per_prompt": [
-                    0.2286,
-                    0.2191
-                ],
-                "sum": 0.4477,
-                "mean": 0.2238,
-                "median": 0.2238,
-                "mode": 0.229,
-                "std": 0.0066
-            },
-            "tokens_generated": {
-                "per_prompt": [
-                    1,
-                    1
-                ],
-                "sum": 2,
-                "mean": 1.0,
-                "median": 1.0,
-                "mode": 1,
-                "std": 0.0
-            }
-        },
-        "test-squad_v2.parquet": {
-            "type": "squad_v2",
-            "total_samples": 2,
-            "format_success_rate": 50.0,
-            "correct": 1,
-            "incorrect": 1,
-            "accuracy": 50.0,
-            "metrics": {
-                "task": "SQuAD v2",
-                "EM": 50.0,
-                "F1": 50.0,
-                "HasAns_EM": 50.0,
-                "HasAns_F1": 50.0,
-                "NoAns_Accuracy": 0.0,
-                "AvNA_Accuracy": 50.0,
-                "support": 2
-            },
-            "latency_seconds": {
-                "per_prompt": [
-                    0.1754,
-                    0.6376
-                ],
-                "sum": 0.813,
-                "mean": 0.4065,
-                "median": 0.4065,
-                "mode": 0.175,
-                "std": 0.3268
-            },
-            "tokens_generated": {
-                "per_prompt": [
-                    1,
-                    13
-                ],
-                "sum": 14,
-                "mean": 7.0,
-                "median": 7.0,
-                "mode": 1,
-                "std": 8.49
+                "sum": 438,
+                "mean": 219.0,
+                "median": 219.0,
+                "mode": 280,
+                "std": 86.27
             }
         }
     }
