@@ -1,0 +1,14 @@
+{
+  "model_info": {
+    "base_model": "Qwen/Qwen3-0.6B",
+    "repo_id": "Qwen/Qwen3-0.6B",
+    "source": "huggingface",
+    "downloaded_at": "2025-08-28T11:20:44.686301Z",
+    "is_base_model": true
+  },
+  "training_parameters": {
+    "type": "pretrained",
+    "notes": "Raw/base model snapshot.",
+    "output_dir": "Models\\Qwen3-0.6B_base"
+  }
+}

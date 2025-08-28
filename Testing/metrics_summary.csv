@@ -1,0 +1,5 @@
+model,ai2_arc__accuracy,ai2_arc__latency_mean_s,ai2_arc__macro_f1,boolq__MCC,boolq__accuracy,boolq__latency_mean_s,squad_v2__EM,squad_v2__F1,squad_v2__latency_mean_s
+Qwen3-0.6B-arc_SFT_QLORA,53.33,0.7249,0.5064,0.0632,63.33,0.2879,3.33,3.33,0.3358
+Qwen3-0.6B_base,63.33,1.9426,0.5813,0.1195,23.33,0.1797,20.0,20.0,0.2218
+Qwen3-1.7B-arc_SFT_QLORA,80.0,12.7516,0.72,0.0674,36.67,0.3028,16.67,23.33,0.4064
+Qwen3-1.7B_base,80.0,5.0652,0.7617,-1.0,0.0,0.1221,40.0,44.13,0.1628
