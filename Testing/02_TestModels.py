@@ -17,7 +17,7 @@ import time
 from collections import Counter, defaultdict
 from typing import List, Union, Dict, Any
 
-datasetTrunc=30
+datasetTrunc=None
 
 device_map = {"": 0} if torch.cuda.is_available() else {"": "cpu"}
 # Define custom load function
@@ -58,7 +58,7 @@ datasets_info = {
             "You are taking a multiple-choice test.\n"
             "Each question will have exactly 4 options: A, B, C or D.\n"
             "Read the question and choose the correct answer.\n"
-            "Output the letter of the correct answer inside \\boxed{}, like this: \\boxed{C}"
+            "Output only the letter of the correct answer inside \\boxed{}, like this: \\boxed{C}"
         ),
         "context": False,
         "task": "mcq4",
