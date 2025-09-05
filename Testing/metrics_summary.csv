@@ -1,5 +1,8 @@
-model,ai2_arc__accuracy,ai2_arc__latency_mean_s,ai2_arc__macro_f1,boolq__MCC,boolq__accuracy,boolq__latency_mean_s,squad_v2__EM,squad_v2__F1,squad_v2__latency_mean_s
-Qwen3-0.6B-arc_SFT_QLORA,43.33,1.0665,0.4184,0.0689,55.5,0.3276,0.0,1.07,0.3735
-Qwen3-0.6B_base,56.67,1.8267,0.5833,0.0716,46.0,0.1894,7.0,9.13,0.2485
-Qwen3-1.7B-arc_SFT_QLORA,76.67,11.4777,0.7667,0.3421,62.5,0.39,18.0,23.31,0.5195
-Qwen3-1.7B_base,76.67,4.1687,0.8031,-0.9797,1.0,0.2246,28.0,32.11,0.3137
+model,OpenMathInstruct-2__avg_abs_diff,OpenMathInstruct-2__latency_mean_s,ai2_arc__latency_mean_s,ai2_arc__macro_f1,boolq__latency_mean_s,boolq__macro_f1,squad_v2__F1,squad_v2__latency_mean_s
+Qwen3-0.6B-arc_SFT_None_Lora32,22870.653666,0.4439,0.1595,0.488,0.1599,0.3367,8.59,0.1958
+Qwen3-0.6B-arc_SFT_None_Lora64,22870.688842,0.1811,0.1601,0.4937,0.1587,0.3241,8.09,0.1952
+Qwen3-0.6B-boolq_SFT_None_Lora32,25172.04453,4.7384,0.9745,0.5021,0.153,0.3148,8.15,0.1963
+Qwen3-0.6B-openmath_SFT_None_Lora32,23919.390779,1.5776,0.8702,0.5095,0.1564,0.3305,8.48,0.1963
+Qwen3-0.6B-squad_SFT_None_Lora32,23523.160626,1.9676,0.3095,0.5024,0.1519,0.3148,9.59,0.195
+Qwen3-0.6B_base,24834.379745,6.0139,1.1397,0.4932,0.1794,0.394,10.07,0.2274
+Qwen3-1.7B_base,742.251114,12.5197,3.4025,0.7986,0.2171,0.0099,30.36,0.2837

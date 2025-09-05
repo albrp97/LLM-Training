@@ -82,8 +82,20 @@ datasets_info = {
         ),
         "context": True,
         "task": "squad_v2",
+    },
+    "test-OpenMathInstruct-2.parquet": {
+        "system_prompt": (
+            "You are solving math problems.\n"
+            "Read each problem carefully and provide only the final numeric answer.\n"
+            "Output your answer inside \\boxed{}, like this: \\boxed{42}\n"
+            "Do not include any explanation or intermediate steps."
+        ),
+        "context": False,
+        "task": "math_numeric",
     }
+
 }
+
 
 # METRICS
 # ---------------------------
@@ -282,6 +294,38 @@ def compute_metrics(kind: str, golds, preds):
                 "support": total,
             }
         }
+    if kind == "math_numeric":
+        # Comparar respuestas numéricas con tolerancia
+        correct = 0
+        total = len(golds)
+        incorrect = 0
+        tolerance = 1e-4  # puedes ajustar la tolerancia si lo deseas
+        diffs = []
+        for gold, pred in zip(golds, preds):
+            try:
+                gold_num = float(gold)
+                pred_num = float(pred) if pred is not None and pred != "" else None
+                if pred_num is not None and abs(gold_num - pred_num) < tolerance:
+                    correct += 1
+                else:
+                    incorrect += 1
+                if pred_num is not None:
+                    diffs.append(abs(gold_num - pred_num))
+            except Exception:
+                incorrect += 1
+                diffs.append(None)
+        acc = correct / total * 100 if total else 0.0
+        avg_diff = sum([d for d in diffs if d is not None]) / len([d for d in diffs if d is not None]) if diffs else None
+        return {
+            "correct": correct,
+            "incorrect": incorrect,
+            "accuracy": round(acc, 2),
+            "metrics": {
+                "task": "OpenMathInstruct-2 (numeric)",
+                "avg_abs_diff": round(avg_diff, 6) if avg_diff is not None else None,
+                "support": total,
+            }
+        }
 
     # generic fallback: string equality
     correct = sum(1 for g,p in zip(golds,preds) if (p is not None and p == g))
@@ -293,6 +337,7 @@ def compute_metrics(kind: str, golds, preds):
         "accuracy": round(acc, 2),
         "metrics": {"task": "Generic", "support": total}
     }
+
 
 import os, gc
 import torch
@@ -446,9 +491,9 @@ for model_name in models:
 
     with tqdm(
         total=total_samples,
-        desc=model_name,
+        desc=model_name.split("/")[-1],
         dynamic_ncols=True,
-        bar_format="Testing with {desc} ({n_fmt}/{total_fmt}) |{bar}| {percentage:3.0f}% {rate_fmt} {elapsed}<{remaining}",
+        bar_format="{desc} ({n_fmt}/{total_fmt}) |{bar}| {percentage:3.0f}% {rate_fmt} {elapsed}<{remaining}",
         leave=True
     ) as pbar:
 
