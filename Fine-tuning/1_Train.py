@@ -82,9 +82,6 @@ assistant_only_loss = False
 # Maximum sequence length (in tokens) for tokenized inputs
 max_length = 1024  
 
-
-
-
 def load_model_and_tokenizer(model_name, quantization_config, device_map):
     # Load base model and tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -249,9 +246,6 @@ sft_trainer = SFTTrainer(
     train_dataset=train_dataset, 
     processing_class=tokenizer,
 )
-
-
-# TODO fix percentage of trainable parameters
 
 # Calculate total and trainable parameters
 trainable_params = 0
