@@ -12,12 +12,16 @@ from datasets import Dataset
 # User configuration
 # -----------------------------------------------------------
 
-DATASET_CHOICE = "openmath"       # options: "arc", "boolq", "squad", "openmath"   
+train=True
+
+DATASET_CHOICE = "openmath"       # options: "arc", "squad", "openmath"   
+# we will not test boolq for now
+
 FINETUNING = "SFT"
 
-MODEL_NAME = "Qwen/Qwen3-0.6B"
+MODEL_NAME = "Qwen/Qwen3-1.7B"
 
-QUANT_METHOD = "None_Lora32"  # options: "None", "QLORA", "AWQ", "GPTQ"
+
 
 device_map = {"": 0} if torch.cuda.is_available() else {"": "cpu"}
 
@@ -25,11 +29,19 @@ device_map = {"": 0} if torch.cuda.is_available() else {"": "cpu"}
 # LoRA hyperparameters
 # -----------------------------------------------------------
 
-lora_r = 32
+lora_r = 1024
+# 32 is 1.5% --
+# 64 is 3% 
+# 128 is 5.8%
+# 256 is 11% --
+# 512 is 20%
+# 1024 is 33% --
+
 target_modules = ["q_proj", "k_proj", "v_proj", "o_proj"]
 lora_alpha = 16
 lora_dropout = 0.1
 
+QUANT_METHOD = f"None_Lora{lora_r}"  # options: "None", "QLORA", "AWQ", "GPTQ"
 
 # -----------------------------------------------------------
 # Training hyperparameters
@@ -296,80 +308,81 @@ print('========================================\n')
 # ===============================
 # Training
 # ===============================
-sft_trainer.train()
+if train:
+    sft_trainer.train()
 
-# ===============================
-# Save the fine-tuned model, tokenizer, and metadata
-# ===============================
+    # ===============================
+    # Save the fine-tuned model, tokenizer, and metadata
+    # ===============================
 
-model = sft_trainer.model.merge_and_unload()
-model.save_pretrained(output_dir, safe_serialization=True)
-tokenizer.save_pretrained(output_dir)
+    model = sft_trainer.model.merge_and_unload()
+    model.save_pretrained(output_dir, safe_serialization=True)
+    tokenizer.save_pretrained(output_dir)
 
-def safe_serialize(obj):
-    """Converts no serializable objects to serializable formats."""
-    if isinstance(obj, (str, int, float, bool, type(None))):
-        return obj
-    elif isinstance(obj, (list, tuple)):
-        return [safe_serialize(item) for item in obj]
-    elif isinstance(obj, dict):
-        return {key: safe_serialize(value) for key, value in obj.items()}
-    elif isinstance(obj, SFTConfig):
-        return {k: safe_serialize(v) for k, v in obj.to_dict().items()}
-    elif isinstance(obj, BitsAndBytesConfig):
-        return {k: safe_serialize(v) for k, v in vars(obj).items() if not k.startswith('_')}
-    elif hasattr(obj, '__dict__'):
-        return {k: safe_serialize(v) for k, v in vars(obj).items() if not k.startswith('_')}
-    else:
-        return str(obj)
-    
-def drop_nulls(obj):
-    """Eliminate keys with None values recursively."""
-    if isinstance(obj, dict):
-        return {k: drop_nulls(v) for k, v in obj.items() if v is not None}
-    elif isinstance(obj, list):
-        return [drop_nulls(v) for v in obj if v is not None]
-    else:
-        return obj
+    def safe_serialize(obj):
+        """Converts no serializable objects to serializable formats."""
+        if isinstance(obj, (str, int, float, bool, type(None))):
+            return obj
+        elif isinstance(obj, (list, tuple)):
+            return [safe_serialize(item) for item in obj]
+        elif isinstance(obj, dict):
+            return {key: safe_serialize(value) for key, value in obj.items()}
+        elif isinstance(obj, SFTConfig):
+            return {k: safe_serialize(v) for k, v in obj.to_dict().items()}
+        elif isinstance(obj, BitsAndBytesConfig):
+            return {k: safe_serialize(v) for k, v in vars(obj).items() if not k.startswith('_')}
+        elif hasattr(obj, '__dict__'):
+            return {k: safe_serialize(v) for k, v in vars(obj).items() if not k.startswith('_')}
+        else:
+            return str(obj)
+        
+    def drop_nulls(obj):
+        """Eliminate keys with None values recursively."""
+        if isinstance(obj, dict):
+            return {k: drop_nulls(v) for k, v in obj.items() if v is not None}
+        elif isinstance(obj, list):
+            return [drop_nulls(v) for v in obj if v is not None]
+        else:
+            return obj
 
 
-# Create complete metadata report
-training_metadata = {
-    "model_info": {
-        "model_name": new_model_name,
-        "base_model": MODEL_NAME,
-        "fine_tuning_date": datetime.now().isoformat(),
-        "model_type": "CausalLM",
-        "has_quantization": quantization_config is not None,
-        "total_params": total_params,
-        "trainable_params": trainable_params,
-        "percentage_trainable": percentage_trainable
-    },
-    "training_parameters": safe_serialize(sft_trainer.args),
-    "lora_config": safe_serialize(config),
-    "quantization_config": safe_serialize(quantization_config) if quantization_config else None,
-    "training_stats": {
-        "total_steps": sft_trainer.state.max_steps,
-        "epochs_completed": sft_trainer.state.epoch,
-    },
-    "hardware_info": {
-        "device": str(model.device),
-        "dtype": str(model.dtype),
+    # Create complete metadata report
+    training_metadata = {
+        "model_info": {
+            "model_name": new_model_name,
+            "base_model": MODEL_NAME,
+            "fine_tuning_date": datetime.now().isoformat(),
+            "model_type": "CausalLM",
+            "has_quantization": quantization_config is not None,
+            "total_params": total_params,
+            "trainable_params": trainable_params,
+            "percentage_trainable": percentage_trainable
+        },
+        "training_parameters": safe_serialize(sft_trainer.args),
+        "lora_config": safe_serialize(config),
+        "quantization_config": safe_serialize(quantization_config) if quantization_config else None,
+        "training_stats": {
+            "total_steps": sft_trainer.state.max_steps,
+            "epochs_completed": sft_trainer.state.epoch,
+        },
+        "hardware_info": {
+            "device": str(model.device),
+            "dtype": str(model.dtype),
+        }
     }
-}
 
-clean_metadata = drop_nulls(training_metadata)
+    clean_metadata = drop_nulls(training_metadata)
 
-# Save metadata to JSON file
-with open(f"{output_dir}/training_metadata.json", "w") as f:
-    json.dump(clean_metadata, f, indent=4, ensure_ascii=False)
+    # Save metadata to JSON file
+    with open(f"{output_dir}/training_metadata.json", "w") as f:
+        json.dump(clean_metadata, f, indent=4, ensure_ascii=False)
 
-# Save model config
-model.config.save_pretrained(output_dir)
+    # Save model config
+    model.config.save_pretrained(output_dir)
 
-print(f"\nModel saved in: {output_dir}")
-print("File structure:")
-print(f"  - model.safetensors")
-print(f"  - config.json")
-print(f"  - training_metadata.json")
-print(f"  - tokenizer files")
+    print(f"\nModel saved in: {output_dir}")
+    print("File structure:")
+    print(f"  - model.safetensors")
+    print(f"  - config.json")
+    print(f"  - training_metadata.json")
+    print(f"  - tokenizer files")
