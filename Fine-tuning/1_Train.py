@@ -2,10 +2,11 @@ from datetime import datetime
 import json
 import torch
 import pandas as pd
-from transformers import AutoTokenizer, AutoModelForCausalLM, AwqConfig, GPTQConfig, BitsAndBytesConfig, pipeline
+from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from trl import SFTTrainer, SFTConfig
 from peft import prepare_model_for_kbit_training, LoraConfig, get_peft_model
 from datasets import Dataset
+
 
 
 # -----------------------------------------------------------
@@ -20,8 +21,6 @@ DATASET_CHOICE = "openmath"       # options: "arc", "squad", "openmath"
 FINETUNING = "SFT"
 
 MODEL_NAME = "Qwen/Qwen3-1.7B"
-
-
 
 device_map = {"": 0} if torch.cuda.is_available() else {"": "cpu"}
 
@@ -41,7 +40,9 @@ target_modules = ["q_proj", "k_proj", "v_proj", "o_proj"]
 lora_alpha = 16
 lora_dropout = 0.1
 
-QUANT_METHOD = f"None_Lora{lora_r}"  # options: "None", "QLORA", "AWQ", "GPTQ"
+LORA_CONFIG = f"LoRa_ {lora_r}" # options: "NoLoRa", "LoRa_{lora_r}"
+
+QUANT_METHOD = "NoQuant"  # options: "NoQuant", "QLORA", "AWQ", "GPTQ"
 
 # -----------------------------------------------------------
 # Training hyperparameters
@@ -94,11 +95,16 @@ assistant_only_loss = False
 # Maximum sequence length (in tokens) for tokenized inputs
 max_length = 1024  
 
+
+# -----------------------------------------------------------
+# Aux functions
+# -----------------------------------------------------------
+
 def load_model_and_tokenizer(model_name, quantization_config, device_map):
     # Load base model and tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForCausalLM.from_pretrained(
-        MODEL_NAME,
+        model_name,
         quantization_config=quantization_config,
         device_map=device_map,
         torch_dtype=torch.bfloat16 if torch.cuda.is_available() else None,
@@ -133,6 +139,32 @@ def preprocess_function(df, context: bool):
 
     # Convert the resulta to HuggingFace Dataset
     return Dataset.from_list(processed_data.tolist())
+
+def safe_serialize(obj):
+    """Converts no serializable objects to serializable formats."""
+    if isinstance(obj, (str, int, float, bool, type(None))):
+        return obj
+    elif isinstance(obj, (list, tuple)):
+        return [safe_serialize(item) for item in obj]
+    elif isinstance(obj, dict):
+        return {key: safe_serialize(value) for key, value in obj.items()}
+    elif isinstance(obj, SFTConfig):
+        return {k: safe_serialize(v) for k, v in obj.to_dict().items()}
+    elif isinstance(obj, BitsAndBytesConfig):
+        return {k: safe_serialize(v) for k, v in vars(obj).items() if not k.startswith('_')}
+    elif hasattr(obj, '__dict__'):
+        return {k: safe_serialize(v) for k, v in vars(obj).items() if not k.startswith('_')}
+    else:
+        return str(obj)
+    
+def drop_nulls(obj):
+    """Eliminate keys with None values recursively."""
+    if isinstance(obj, dict):
+        return {k: drop_nulls(v) for k, v in obj.items() if v is not None}
+    elif isinstance(obj, list):
+        return [drop_nulls(v) for v in obj if v is not None]
+    else:
+        return obj
 
 # ============================================================
 # Dataset selection
@@ -173,27 +205,10 @@ match QUANT_METHOD:
         )
 
     case "AWQ":
-        bits = 4
-        fuse_max_seq_len = 512
-        do_fuse = True
-
-        quantization_config = AwqConfig(
-            bits=bits,
-            fuse_max_seq_len=fuse_max_seq_len,
-            do_fuse=do_fuse,
-        )
+        raise NotImplementedError("Implement AdaRound here")
 
     case "GPTQ":
-        bits = 4
-        v2 = True # Activate GPTQ v2
-        
-        quantization_config = GPTQConfig(
-            bits=bits, 
-            dataset=dataset, 
-            tokenizer=tokenizer,
-            v2=v2
-        )
-
+        raise NotImplementedError("Implement AdaRound here")
 
     case "adaround":
         raise NotImplementedError("Implement AdaRound here")
@@ -210,8 +225,6 @@ match QUANT_METHOD:
 model, tokenizer = load_model_and_tokenizer(MODEL_NAME, quantization_config, device_map)
 model = prepare_model_for_kbit_training(model)
 
-
-
 config = LoraConfig(
     r=lora_r, 
     lora_alpha=lora_alpha, 
@@ -225,7 +238,7 @@ model = get_peft_model(model, config)
 
 # Output folder where both checkpoints and the final fine-tuned model will be saved
 model_name = MODEL_NAME.split("/")[-1]
-new_model_name = f"{model_name}-{DATASET_CHOICE}_{FINETUNING}_{QUANT_METHOD}" 
+new_model_name = f"{model_name}-{DATASET_CHOICE}_{FINETUNING}_{LORA_CONFIG}_{QUANT_METHOD}" 
 output_dir = f"Models/{new_model_name}" 
 
 # Preprocess the dataset into tokenized format
@@ -319,31 +332,6 @@ if train:
     model.save_pretrained(output_dir, safe_serialization=True)
     tokenizer.save_pretrained(output_dir)
 
-    def safe_serialize(obj):
-        """Converts no serializable objects to serializable formats."""
-        if isinstance(obj, (str, int, float, bool, type(None))):
-            return obj
-        elif isinstance(obj, (list, tuple)):
-            return [safe_serialize(item) for item in obj]
-        elif isinstance(obj, dict):
-            return {key: safe_serialize(value) for key, value in obj.items()}
-        elif isinstance(obj, SFTConfig):
-            return {k: safe_serialize(v) for k, v in obj.to_dict().items()}
-        elif isinstance(obj, BitsAndBytesConfig):
-            return {k: safe_serialize(v) for k, v in vars(obj).items() if not k.startswith('_')}
-        elif hasattr(obj, '__dict__'):
-            return {k: safe_serialize(v) for k, v in vars(obj).items() if not k.startswith('_')}
-        else:
-            return str(obj)
-        
-    def drop_nulls(obj):
-        """Eliminate keys with None values recursively."""
-        if isinstance(obj, dict):
-            return {k: drop_nulls(v) for k, v in obj.items() if v is not None}
-        elif isinstance(obj, list):
-            return [drop_nulls(v) for v in obj if v is not None]
-        else:
-            return obj
 
 
     # Create complete metadata report
