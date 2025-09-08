@@ -1,2 +1,4 @@
 *.safetensors
 *.pt
+.venv
+.vscode
