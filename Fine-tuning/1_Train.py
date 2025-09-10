@@ -237,7 +237,7 @@ match QUANT_METHOD:
 model, tokenizer = load_model_and_tokenizer(MODEL_NAME, quantization_config, device_map)
 model = prepare_model_for_kbit_training(model)
 
-match PEFT_CONFIG:
+match PEFT_CONFIG.split('_')[0]:
     case "LoRa":
         PEFT_CONFIG += f"{lora_r}"
         peft_config = LoraConfig(
