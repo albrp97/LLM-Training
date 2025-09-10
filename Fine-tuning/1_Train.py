@@ -45,7 +45,7 @@ lora_dropout = 0.1
 # VeRa hyperparameters
 # -----------------------------------------------------------
 
-# VeRA parameter dimension (“rank”). Choose higher values than LoRA ranks here, since VeRA uses far fewer parameters than LoRA 
+# VeRA parameter dimension (“rank”). Choose higher values than LoRA ranks here, since VeRA uses far fewer parameters than LoRA
 vera_r = 256
 target_modules = ["q_proj", "k_proj", "v_proj", "o_proj"]
 vera_dropout = 0.1
@@ -235,9 +235,8 @@ match QUANT_METHOD:
         quantization_config = None
 
 model, tokenizer = load_model_and_tokenizer(MODEL_NAME, quantization_config, device_map)
-model = prepare_model_for_kbit_training(model)
 
-match PEFT_CONFIG.split('_')[0]:
+match PEFT_CONFIG:
     case "LoRa":
         PEFT_CONFIG += f"{lora_r}"
         peft_config = LoraConfig(
@@ -260,10 +259,11 @@ match PEFT_CONFIG.split('_')[0]:
             use_dora=True
         )
     case "VeRa":
+        PEFT_CONFIG += f"{vera_r}"
         peft_config = VeraConfig(
             r=vera_r,
             target_modules=target_modules,
-            dropout=vera_dropout,
+            vera_dropout=vera_dropout,
             d_initial=vera_d_initial,
             bias="none",
             task_type="CAUSAL_LM"
@@ -271,12 +271,15 @@ match PEFT_CONFIG.split('_')[0]:
     case _:
         peft_config = None
 
-model = get_peft_model(model, peft_config)
+if peft_config is not None:
+    model = prepare_model_for_kbit_training(model)
+    model = get_peft_model(model, peft_config)
+
 
 # Output folder where both checkpoints and the final fine-tuned model will be saved
 model_name = MODEL_NAME.split("/")[-1]
 new_model_name = f"{model_name}-{DATASET_CHOICE}_{FINETUNING}_{PEFT_CONFIG}_{QUANT_METHOD}"
-output_dir = f"Models/{new_model_name}" 
+output_dir = f"Models/{new_model_name}"
 
 # Preprocess the dataset into tokenized format
 train_dataset = preprocess_function(df, context)
@@ -295,7 +298,7 @@ sft_config = SFTConfig(
     assistant_only_loss=assistant_only_loss,
     max_length=max_length,
     num_train_epochs=num_train_epochs,
-    max_steps=max_steps
+    max_steps=max_steps,
 )
 
 
@@ -364,8 +367,9 @@ if train:
     # ===============================
     # Save the fine-tuned model, tokenizer, and metadata
     # ===============================
+    if peft_config is not None:
+        model = sft_trainer.model.merge_and_unload()
 
-    model = sft_trainer.model.merge_and_unload()
     model.save_pretrained(output_dir, safe_serialization=True)
     tokenizer.save_pretrained(output_dir)
 
