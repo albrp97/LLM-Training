@@ -14,7 +14,7 @@ from datasets import Dataset
 
 train = True
 
-DATASET_CHOICE = "openmath"       # options: "arc", "squad", "openmath"
+DATASET_CHOICE = "arc"       # options: "arc", "squad", "openmath"
 # we will not test boolq for now
 
 FINETUNING = "SFT"
@@ -24,7 +24,7 @@ MODEL_NAME = "Qwen/Qwen3-1.7B"
 device_map = {"": 0} if torch.cuda.is_available() else {"": "cpu"}
 
 
-PEFT_CONFIG = "LoRa"  # options: "NoPeft", "LoRa", "VeRa", "DoRa"
+PEFT_CONFIG = "NoPeft"  # options: "NoPeft", "LoRa", "VeRa", "DoRa"
 # -----------------------------------------------------------
 # LoRa hyperparameters
 # -----------------------------------------------------------
@@ -328,9 +328,9 @@ print(f"Number of parameters: {total_params / 1e9:.4f} billion")
 print(f"Number of trainable parameters: {trainable_params / 1e9:.7f} billion")
 print(f"Percentage of trainable parameters: {percentage_trainable:.7f}%")
 print(f"Number of layers: {model.config.num_hidden_layers}")
-print(f"Hidden size: {model.config.hidden_size}\n")
-
-print('========================================')
+print(f"Hidden size: {model.config.hidden_size}")
+print(f"Output directory: {output_dir}")
+print('\n========================================')
 
 if torch.cuda.is_available():
     num_gpus = torch.cuda.device_count()
