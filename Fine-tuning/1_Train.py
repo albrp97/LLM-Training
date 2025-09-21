@@ -29,7 +29,7 @@ PEFT_CONFIG = "NoPeft"  # options: "NoPeft", "LoRa", "VeRa", "DoRa"
 # LoRa hyperparameters
 # -----------------------------------------------------------
 
-lora_r = 1024
+lora_r = 256
 # 32 is 1.5% --
 # 64 is 3%
 # 128 is 5.8%

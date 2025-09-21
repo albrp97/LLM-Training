@@ -37,7 +37,6 @@ Additionally, we consider the model's \textbf{``reasoning'' mode} (a run-time be
   \item \textbf{Q5:} Partial vs.\ full tuning: LoRA vs.\ NoPeft?
   \item \textbf{Q6:} Cross-task transfer effects?
   \item \textbf{Q7:} If VRAM forces LoRA, is fine-tuning still worth it?
-  \item \textbf{Q8:} What should we do with \emph{reasoning} in future experiments?
 \end{itemize}
 
 \section{Experimental Setup}
@@ -178,5 +177,11 @@ No calibration/temperature sweeps are reported here.
   \item \textbf{(2) A larger base model is best on accuracy but slower; 0.6B+SFT is the speed/value sweet spot.}
   \item \textbf{(3) LoRA rank has weak, non-monotonic effects; use $\sim$256 by default when constrained.}
 \end{itemize}
+\begin{figure}
+    \centering
+    \includegraphics[width=1\linewidth]{01_Finetuning_ModelSize_LoraR.png}
+    \caption{Efficacy vs Latency}
+    \label{fig:placeholder}
+\end{figure}
 
 \end{document}
