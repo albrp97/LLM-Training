@@ -14,12 +14,12 @@ from datasets import Dataset
 
 train = True
 
-DATASET_CHOICE = "arc"       # options: "arc", "squad", "openmath"
+DATASET_CHOICE = "openmath"       # options: "arc", "squad", "openmath"
 # we will not test boolq for now
 
 FINETUNING = "SFT"
 
-MODEL_NAME = "Qwen/Qwen3-1.7B"
+MODEL_NAME = "Qwen/Qwen3-0.6B"
 
 device_map = {"": 0} if torch.cuda.is_available() else {"": "cpu"}
 
