@@ -2,3 +2,4 @@
 *.pt
 .venv
 .vscode
+models/

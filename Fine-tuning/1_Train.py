@@ -14,7 +14,9 @@ from datasets import Dataset
 
 train = True
 
-DATASET_CHOICE = "openmath"       # options: "arc", "squad", "openmath"
+DATASET_CHOICE = "openmath"       
+# options: "openmath", "squad"
+# arc results have no variation, so we will not test arc for now
 # we will not test boolq for now
 
 FINETUNING = "SFT"
@@ -24,12 +26,12 @@ MODEL_NAME = "Qwen/Qwen3-0.6B"
 device_map = {"": 0} if torch.cuda.is_available() else {"": "cpu"}
 
 
-PEFT_CONFIG = "NoPeft"  # options: "NoPeft", "LoRa", "VeRa", "DoRa"
+PEFT_CONFIG = "DoRa"  # options: "NoPeft", "LoRa", "VeRa", "DoRa"
 # -----------------------------------------------------------
 # LoRa hyperparameters
 # -----------------------------------------------------------
 
-lora_r = 256
+lora_r = 512
 # 32 is 1.5% --
 # 64 is 3%
 # 128 is 5.8%
