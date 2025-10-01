@@ -448,6 +448,8 @@ def _fmt_bytes(n: int) -> str:
             return f"{n:.2f} {unit}"
         n /= 1024
 
+def _bytes_to_gb(n: int) -> float:
+    return round(n / (1024 ** 3), 3)
 
 def print_vram_report(title: str = ""):
     if not torch.cuda.is_available():
@@ -524,6 +526,12 @@ def evaluate_model(model_name: str, datasetTrunc: int = None, verbose: bool = Fa
     model = AutoModelForCausalLM.from_pretrained(
         model_name, torch_dtype="auto", device_map=device_map
     )
+    
+    # Start a fresh peak measurement for this model's evaluation
+    if torch.cuda.is_available():
+        for i in range(torch.cuda.device_count()):
+            with torch.cuda.device(i):
+                torch.cuda.reset_peak_memory_stats()
 
     # Load datasets
     datasets = list(Path("Datasets").glob("test-*.parquet"))
@@ -546,9 +554,38 @@ def evaluate_model(model_name: str, datasetTrunc: int = None, verbose: bool = Fa
         leave=True,
     ) as pbar:
         per_dataset = evaluate_datasets(model, tokenizer, loaded, all_latencies, all_tokens, pbar, verbose)
+        # Capture peak VRAM during evaluation (for this process)
+        hardware = {}
+        if torch.cuda.is_available():
+            per_gpu = []
+            max_res = 0
+            max_all = 0
+            for i in range(torch.cuda.device_count()):
+                peak_alloc = torch.cuda.max_memory_allocated(i)
+                peak_res   = torch.cuda.max_memory_reserved(i)
+                per_gpu.append({
+                    "gpu": i,
+                    "peak_allocated_gb": _bytes_to_gb(peak_alloc),
+                    "peak_reserved_gb":  _bytes_to_gb(peak_res),
+                })
+                max_res = max(max_res, peak_res)
+                max_all = max(max_all, peak_alloc)
+            hardware = {
+                "peak_vram_reserved_gb": _bytes_to_gb(max_res),
+                "peak_vram_allocated_gb": _bytes_to_gb(max_all),
+                "per_gpu": per_gpu,
+            }
+
 
     # Generate final report
     model_report = generate_model_report(model_name, per_dataset, all_latencies, all_tokens)
+    
+    if hardware:
+        model_report["hardware"] = hardware
+        # Convenience copy for tools expecting summary-only fields
+        model_report.setdefault("summary", {})["peak_vram_reserved_gb"]  = hardware["peak_vram_reserved_gb"]
+        model_report["summary"]["peak_vram_allocated_gb"] = hardware["peak_vram_allocated_gb"]
+
 
     # Save results
     with open(metrics_path, "w", encoding="utf-8") as f:

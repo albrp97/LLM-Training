@@ -26,12 +26,13 @@ MODEL_NAME = "Qwen/Qwen3-0.6B"
 device_map = {"": 0} if torch.cuda.is_available() else {"": "cpu"}
 
 
-PEFT_CONFIG = "LoRa"  # options: "NoPeft", "LoRa", "VeRa", "DoRa"
+PEFT_CONFIG = "DoRa" 
+# options: "NoPeft", "LoRa", "VeRa", "DoRa"
 # -----------------------------------------------------------
 # LoRa hyperparameters
 # -----------------------------------------------------------
 
-lora_r = 512
+lora_r = 256
 # 32 is 1.5% --
 # 64 is 3%
 # 128 is 5.8%
@@ -48,7 +49,7 @@ lora_dropout = 0.1
 # -----------------------------------------------------------
 
 # VeRA parameter dimension (“rank”). Choose higher values than LoRA ranks here, since VeRA uses far fewer parameters than LoRA
-vera_r = 512
+vera_r = 1024
 target_modules = ["q_proj", "k_proj", "v_proj", "o_proj"]
 vera_dropout = 0.1
 # Initial init value for vera_lambda_d vector used when initializing the VeRA parameters. Small values (<=0.1) are recommended
@@ -360,11 +361,63 @@ else:
 print('========================================\n')
 
 
+# ---- VRAM helpers -----------------------------------------------------------
+def _bytes_to_gb(n: int) -> float:
+    return round(n / (1024 ** 3), 3)
+
+def reset_peak_vram():
+    """Reset CUDA peak memory counters and clear cache on all GPUs."""
+    if torch.cuda.is_available():
+        for i in range(torch.cuda.device_count()):
+            with torch.cuda.device(i):
+                torch.cuda.reset_peak_memory_stats()
+                torch.cuda.empty_cache()
+
+def get_peak_vram_gb():
+    """
+    Returns:
+        {
+          "overall_max_reserved_gb": float,
+          "overall_max_allocated_gb": float,
+          "per_gpu": [{"gpu": i, "peak_allocated_gb": .., "peak_reserved_gb": ..}, ...]
+        }
+    """
+    if not torch.cuda.is_available():
+        return {
+            "overall_max_reserved_gb": 0.0,
+            "overall_max_allocated_gb": 0.0,
+            "per_gpu": []
+        }
+    per_gpu = []
+    max_res = 0
+    max_all = 0
+    for i in range(torch.cuda.device_count()):
+        peak_alloc = torch.cuda.max_memory_allocated(i)
+        peak_res   = torch.cuda.max_memory_reserved(i)
+        per_gpu.append({
+            "gpu": i,
+            "peak_allocated_gb": _bytes_to_gb(peak_alloc),
+            "peak_reserved_gb":  _bytes_to_gb(peak_res),
+        })
+        max_res = max(max_res, peak_res)
+        max_all = max(max_all, peak_alloc)
+    return {
+        "overall_max_reserved_gb": _bytes_to_gb(max_res),
+        "overall_max_allocated_gb": _bytes_to_gb(max_all),
+        "per_gpu": per_gpu
+    }
+
+
+
 # ===============================
 # Training
 # ===============================
 if train:
+    reset_peak_vram()
+    
     sft_trainer.train()
+    
+    train_vram_peaks = get_peak_vram_gb()
 
     # ===============================
     # Save the fine-tuned model, tokenizer, and metadata
@@ -397,7 +450,16 @@ if train:
         "hardware_info": {
             "device": str(model.device),
             "dtype": str(model.dtype),
-        }
+            "total_params": total_params,
+            "trainable_params": trainable_params,
+            "percentage_trainable": percentage_trainable,
+            # New: VRAM peaks measured during training
+            "vram_peaks": {
+                "overall_max_reserved_gb": train_vram_peaks["overall_max_reserved_gb"],
+                "overall_max_allocated_gb": train_vram_peaks["overall_max_allocated_gb"],
+                "per_gpu": train_vram_peaks["per_gpu"],
+            },
+        },
     }
 
     clean_metadata = drop_nulls(training_metadata)
