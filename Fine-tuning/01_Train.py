@@ -25,7 +25,7 @@ from quantization_utils import (
 # User configuration
 # -----------------------------------------------------------
 
-train = True
+train = False  # Just create model without training for testing
 
 DATASET_CHOICE = "openmath"
 # options: None (saves base model), "openmath", "squad"
@@ -42,7 +42,7 @@ MODEL_NAME = "Qwen/Qwen3-0.6B"
 device_map = {"": 0} if torch.cuda.is_available() else {"": "cpu"}
 
 
-PEFT_CONFIG = "LoRa" 
+PEFT_CONFIG = "NoPeft" 
 # options: "NoPeft", "LoRa", "VeRa", "DoRa"
 # -----------------------------------------------------------
 # LoRa hyperparameters
@@ -80,12 +80,12 @@ merge_after_train = True
 # Keep LM head in fp16 when merging (experimental ablation flag)
 keep_lm_head_fp16 = False
 
-QUANT_METHOD = "QLORA"  
+QUANT_METHOD = "AdaRound"  
 # options: "NoQuant", "QLORA", "GPTQ", "QuaRot", "AdaRound", "BRECQ", "AWQ", "HQQ", "SmoothQuant"
 
 # Target settings used for PTQ pipelines (applied post-training via tools/quantize.py)
 PTQ_TARGET_WEIGHTS_BITS = 4
-PTQ_TARGET_GROUP_SIZE = 64
+PTQ_TARGET_GROUP_SIZE = 128  # Updated default for AdaRound
 PTQ_TARGET_ACTS_BITS = 8
 PTQ_TARGET_KV_BITS = 8
 
@@ -410,6 +410,45 @@ context = DATASET_CHOICE != "arc" and DATASET_CHOICE != "openmath"
 
 print(f"\nLoaded dataset: {DATASET_CHOICE}\nNumber of samples: {len(df)}\n")
 
+# Create calibration data from training set (respects truncation)
+def create_calibration_data():
+    """Create calibration prompts from current training data."""
+    # Calculate calibration size (15% of training set, min 8 for testing, max 128)
+    train_size = len(df)
+    calib_size = min(128, max(8, int(train_size * 0.15)))
+    
+    calib_path = f"Datasets/calibration_{DATASET_CHOICE}_{train_size}samples.txt"
+    
+    print(f"Creating {calib_size} calibration prompts from {train_size} training samples...")
+    
+    # Sample from the (potentially truncated) training data
+    if calib_size >= train_size:
+        calib_df = df.copy()
+    else:
+        calib_df = df.sample(n=calib_size, random_state=42)
+    
+    # Format as chat templates matching training format
+    calib_prompts = []
+    for _, row in calib_df.iterrows():
+        if context:
+            prompt = f"User: {row['question']}{row['context']}\nAssistant:"
+        else:
+            prompt = f"User: {row['question']}\nAssistant:"
+        calib_prompts.append(prompt)
+    
+    with open(calib_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(calib_prompts))
+    
+    print(f"Calibration data saved to: {calib_path}")
+    return calib_path
+
+# Generate calibration data for PTQ methods
+quant_method = QuantMethod.from_any(QUANT_METHOD)
+if quant_method in PTQ_METHODS:
+    calibration_file = create_calibration_data()
+else:
+    calibration_file = None
+
 # --------------------------------------------
 # QUANTIZATION METHOD
 # --------------------------------------------
@@ -696,5 +735,71 @@ if train:
     print("File structure:")
     print("  - model.safetensors")
     print("  - config.json")
+    print("  - training_metadata.json")
+    print("  - tokenizer files")
+
+else:
+    # Save model without training (for testing quantization)
+    print("\nSkipping training, saving base model for testing...")
+    
+    # Save the model as-is
+    model.save_pretrained(output_dir, safe_serialization=True)
+    tokenizer.save_pretrained(output_dir)
+    
+    # Create basic metadata
+    training_metadata = {
+        "model_info": {
+            "model_name": new_model_name,
+            "base_model": MODEL_NAME,
+            "fine_tuning_date": datetime.now().isoformat(),
+            "model_type": "CausalLM",
+            "quantization_tag": quant_tag,
+            "has_quantization": quant_method is QuantMethod.QLORA,
+            "total_params": total_params,
+            "trainable_params": trainable_params,
+            "percentage_trainable": percentage_trainable,
+            "notes": "Base model saved without training for testing purposes."
+        },
+        "training_parameters": {
+            "train": False,
+            "dataset_choice": DATASET_CHOICE,
+            "finetuning_strategy": FINETUNING,
+            "quantization_method": quant_method.value,
+            "trunc_train": TRUNC_TRAIN or 0,
+        },
+        "peft_config": safe_serialize(peft_config),
+        "quantization_config": safe_serialize(quantization_config) if quantization_config else None,
+        "quantization": quant_spec.metadata(),
+        "training_stats": {
+            "total_steps": 0,
+            "epochs_completed": 0,
+        },
+        "hardware_info": {
+            "device": str(model.device),
+            "dtype": str(model.dtype),
+            "total_params": total_params,
+            "trainable_params": trainable_params,
+            "percentage_trainable": percentage_trainable,
+            "vram_peaks": {
+                "overall_max_reserved_gb": 0.0,
+                "overall_max_allocated_gb": 0.0,
+                "per_gpu": [],
+            },
+        },
+    }
+    
+    clean_metadata = drop_nulls(training_metadata)
+    
+    # Save metadata to JSON file
+    with open(f"{output_dir}/training_metadata.json", "w") as f:
+        json.dump(clean_metadata, f, indent=4, ensure_ascii=False)
+    
+    # Save model config
+    model.config.save_pretrained(output_dir)
+    
+    print(f"\nBase model saved in: {output_dir}")
+    print("File structure:")
+    print("  - model.safetensors")
+    print("  - config.json") 
     print("  - training_metadata.json")
     print("  - tokenizer files")
