@@ -14,7 +14,7 @@ from datasets import Dataset
 
 train = True
 
-DATASET_CHOICE = "squad"       
+DATASET_CHOICE = "openmath"       
 # options: "openmath", "squad"
 # arc results have no variation, so we will not test arc for now
 # we will not test boolq for now
@@ -26,7 +26,7 @@ MODEL_NAME = "Qwen/Qwen3-0.6B"
 device_map = {"": 0} if torch.cuda.is_available() else {"": "cpu"}
 
 
-PEFT_CONFIG = "DoRa" 
+PEFT_CONFIG = "VeRa" 
 # options: "NoPeft", "LoRa", "VeRa", "DoRa"
 # -----------------------------------------------------------
 # LoRa hyperparameters
@@ -49,7 +49,7 @@ lora_dropout = 0.1
 # -----------------------------------------------------------
 
 # VeRA parameter dimension (“rank”). Choose higher values than LoRA ranks here, since VeRA uses far fewer parameters than LoRA
-vera_r = 1024
+vera_r = 512
 target_modules = ["q_proj", "k_proj", "v_proj", "o_proj"]
 vera_dropout = 0.1
 # Initial init value for vera_lambda_d vector used when initializing the VeRA parameters. Small values (<=0.1) are recommended
