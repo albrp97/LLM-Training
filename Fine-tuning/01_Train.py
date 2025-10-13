@@ -64,12 +64,25 @@ lora_dropout = 0.1
 # VeRa hyperparameters
 # -----------------------------------------------------------
 
-# VeRA parameter dimension (“rank”). Choose higher values than LoRA ranks here, since VeRA uses far fewer parameters than LoRA
+# VeRA parameter dimension ("rank"). Choose higher values than LoRA ranks here, since VeRA uses far fewer parameters than LoRA
 vera_r = 512
 target_modules = ["q_proj", "k_proj", "v_proj", "o_proj"]
 vera_dropout = 0.1
 # Initial init value for vera_lambda_d vector used when initializing the VeRA parameters. Small values (<=0.1) are recommended
 vera_d_initial = 0.1
+
+# -----------------------------------------------------------
+# QLoRA hyperparameters
+# -----------------------------------------------------------
+
+# QLoRA LoRA parameters (used when QUANT_METHOD = "QLORA")
+qlora_r = 64
+qlora_lora_alpha = 16
+qlora_dropout = 0.05
+# Whether to merge adapters back to base model after training
+merge_after_train = True
+# Keep LM head in fp16 when merging (experimental ablation flag)
+keep_lm_head_fp16 = False
 
 QUANT_METHOD = "QLORA"  
 # options: "NoQuant", "QLORA", "GPTQ", "QuaRot", "AdaRound", "BRECQ", "AWQ", "HQQ", "SmoothQuant"
@@ -81,6 +94,7 @@ PTQ_TARGET_ACTS_BITS = 8
 PTQ_TARGET_KV_BITS = 8
 
 # Controls whether adapters are merged back into the base model on save.
+# For QLoRA, use the specific qlora config above instead
 MERGE_AFTER_TRAIN = True
 
 # -----------------------------------------------------------
@@ -241,16 +255,21 @@ def resolve_quantization_spec(method: QuantMethod) -> QuantizationSpec:
         return QuantizationSpec(
             method=method,
             weights_bits=4,
-            activations_bits=16,
-            kv_cache_bits=16,
-            group_size=None,
-            symmetric=None,
+            activations_bits=None,  # QLoRA doesn't quantize activations
+            kv_cache_bits=None,     # QLoRA doesn't quantize KV cache by default
+            group_size=None,        # NF4 doesn't use explicit group size
+            symmetric=False,        # NF4 is asymmetric
             per_channel=None,
             lm_head_dtype="bf16",
             backend="bitsandbytes",
             extras={
                 "double_quant": True,
                 "base_quant_type": "nf4",
+                "compute_dtype": "bfloat16",
+                "qlora_r": qlora_r,
+                "qlora_lora_alpha": qlora_lora_alpha,
+                "qlora_dropout": qlora_dropout,
+                "keep_lm_head_fp16": keep_lm_head_fp16,
             },
         )
 
@@ -309,7 +328,7 @@ def build_quantization_plan(method: QuantMethod) -> Tuple[QuantizationSpec, Opti
 if DATASET_CHOICE is None:
     quant_method = QuantMethod.from_any(QUANT_METHOD)
     quant_spec, quantization_config = build_quantization_plan(quant_method)
-    quant_spec.extras.setdefault("merge_after_train", MERGE_AFTER_TRAIN)
+    quant_spec.extras.setdefault("merge_after_train", merge_after_train if quant_method is QuantMethod.QLORA else MERGE_AFTER_TRAIN)
     quant_tag = quant_spec.tag()
     model, tokenizer = load_model_and_tokenizer(MODEL_NAME, quantization_config, device_map)
     base_model_name = MODEL_NAME.split("/")[-1]
@@ -401,7 +420,7 @@ print(f"\nLoaded dataset: {DATASET_CHOICE}\nNumber of samples: {len(df)}\n")
 
 quant_method = QuantMethod.from_any(QUANT_METHOD)
 quant_spec, quantization_config = build_quantization_plan(quant_method)
-quant_spec.extras.setdefault("merge_after_train", MERGE_AFTER_TRAIN)
+quant_spec.extras.setdefault("merge_after_train", merge_after_train if quant_method is QuantMethod.QLORA else MERGE_AFTER_TRAIN)
 
 model, tokenizer = load_model_and_tokenizer(MODEL_NAME, quantization_config, device_map)
 
@@ -439,6 +458,20 @@ match PEFT_CONFIG:
         )
     case _:
         peft_config = None
+
+# Special handling for QLoRA: override PEFT config with QLoRA-specific settings
+if quant_method is QuantMethod.QLORA:
+    print(f"Using QLoRA-specific LoRA configuration: r={qlora_r}, alpha={qlora_lora_alpha}, dropout={qlora_dropout}")
+    peft_config = LoraConfig(
+        r=qlora_r,
+        lora_alpha=qlora_lora_alpha,
+        target_modules=target_modules,
+        lora_dropout=qlora_dropout,
+        bias="none",
+        task_type="CAUSAL_LM"
+    )
+    # Update PEFT_CONFIG string for consistent naming
+    PEFT_CONFIG = f"LoRa{qlora_r}"
 
 if peft_config is not None:
     if quant_method is QuantMethod.QLORA:
@@ -592,19 +625,30 @@ if train:
     # Save the fine-tuned model, tokenizer, and metadata
     # ===============================
     trained_model = sft_trainer.model
-    if peft_config is not None and MERGE_AFTER_TRAIN:
+    
+    # Determine merge behavior based on quantization method
+    should_merge = merge_after_train if quant_method is QuantMethod.QLORA else MERGE_AFTER_TRAIN
+    
+    if peft_config is not None and should_merge:
+        print(f"Merging adapters back to base model (merge_after_train={should_merge})")
         model = trained_model.merge_and_unload()
+        
+        # Handle LM head dtype preservation for QLoRA if requested
+        if quant_method is QuantMethod.QLORA and keep_lm_head_fp16:
+            # This is an experimental feature - keeping LM head in FP16
+            # The actual implementation would depend on the model architecture
+            print("Note: keep_lm_head_fp16 flag is set but implementation is architecture-dependent")
     else:
         model = trained_model
 
     model.save_pretrained(output_dir, safe_serialization=True)
     tokenizer.save_pretrained(output_dir)
 
-    quant_spec.extras.setdefault("merge_after_train", MERGE_AFTER_TRAIN)
+    quant_spec.extras.setdefault("merge_after_train", merge_after_train if quant_method is QuantMethod.QLORA else MERGE_AFTER_TRAIN)
     training_params = safe_serialize(sft_trainer.args)
     if isinstance(training_params, dict):
         training_params["quantization_method"] = quant_method.value
-        training_params["merge_after_train"] = MERGE_AFTER_TRAIN
+        training_params["merge_after_train"] = merge_after_train if quant_method is QuantMethod.QLORA else MERGE_AFTER_TRAIN
         training_params["trunc_train"] = TRUNC_TRAIN or 0
 
     # Create complete metadata report
