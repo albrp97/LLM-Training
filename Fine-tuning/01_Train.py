@@ -80,12 +80,12 @@ merge_after_train = True
 # Keep LM head in fp16 when merging (experimental ablation flag)
 keep_lm_head_fp16 = False
 
-QUANT_METHOD = "AdaRound"  
+QUANT_METHOD = "BRECQ"  
 # options: "NoQuant", "QLORA", "GPTQ", "QuaRot", "AdaRound", "BRECQ", "AWQ", "HQQ", "SmoothQuant"
 
 # Target settings used for PTQ pipelines (applied post-training via tools/quantize.py)
 PTQ_TARGET_WEIGHTS_BITS = 4
-PTQ_TARGET_GROUP_SIZE = 128  # Updated default for AdaRound
+PTQ_TARGET_GROUP_SIZE = 64  # Default group size for BRECQ 
 PTQ_TARGET_ACTS_BITS = 8
 PTQ_TARGET_KV_BITS = 8
 
@@ -285,6 +285,15 @@ def resolve_quantization_spec(method: QuantMethod) -> QuantizationSpec:
             "trained_weights_bits": 16,
             "trained_activations_bits": 16,
         }
+        
+        # Add BRECQ-specific mixed precision configuration
+        if method == QuantMethod.BRECQ:
+            extras.update({
+                "mixed_precision": True,
+                "attention_bits": 6,  # W6 for attention layers
+                "mlp_bits": PTQ_TARGET_WEIGHTS_BITS,  # W4 for MLP layers
+            })
+        
         return QuantizationSpec(
             method=method,
             weights_bits=PTQ_TARGET_WEIGHTS_BITS,

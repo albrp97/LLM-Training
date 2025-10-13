@@ -167,6 +167,14 @@ class QuantizationSpec:
         if self.method is not QuantMethod.NO_QUANT and self.lm_head_dtype and "head" not in extras:
             extras["head"] = self.lm_head_dtype
 
+        # Add BRECQ-specific mixed precision tags
+        if self.method == QuantMethod.BRECQ and self.extras:
+            if self.extras.get("mixed_precision"):
+                extras["mix"] = True
+            attention_bits = self.extras.get("attention_bits")
+            if attention_bits and attention_bits != bits_for_tag:
+                extras[f"attn{attention_bits}"] = True
+
         return tag_quant(
             self.method,
             bits=bits_for_tag,
