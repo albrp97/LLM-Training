@@ -72,14 +72,10 @@ vera_dropout = 0.1
 vera_d_initial = 0.1
 
 # -----------------------------------------------------------
-# QLoRA hyperparameters
+# QLoRA hyperparameters (reuses LoRA parameters above)
 # -----------------------------------------------------------
 
-# QLoRA LoRA parameters (used when QUANT_METHOD = "QLORA")
-qlora_r = 64
-qlora_lora_alpha = 16
-qlora_dropout = 0.05
-# Whether to merge adapters back to base model after training
+# Whether to merge adapters back to base model after training (QLoRA-specific)
 merge_after_train = True
 # Keep LM head in fp16 when merging (experimental ablation flag)
 keep_lm_head_fp16 = False
@@ -266,9 +262,9 @@ def resolve_quantization_spec(method: QuantMethod) -> QuantizationSpec:
                 "double_quant": True,
                 "base_quant_type": "nf4",
                 "compute_dtype": "bfloat16",
-                "qlora_r": qlora_r,
-                "qlora_lora_alpha": qlora_lora_alpha,
-                "qlora_dropout": qlora_dropout,
+                "lora_r": lora_r,
+                "lora_alpha": lora_alpha,
+                "lora_dropout": lora_dropout,
                 "keep_lm_head_fp16": keep_lm_head_fp16,
             },
         )
@@ -461,17 +457,17 @@ match PEFT_CONFIG:
 
 # Special handling for QLoRA: override PEFT config with QLoRA-specific settings
 if quant_method is QuantMethod.QLORA:
-    print(f"Using QLoRA-specific LoRA configuration: r={qlora_r}, alpha={qlora_lora_alpha}, dropout={qlora_dropout}")
+    print(f"Using QLoRA with LoRA configuration: r={lora_r}, alpha={lora_alpha}, dropout={lora_dropout}")
     peft_config = LoraConfig(
-        r=qlora_r,
-        lora_alpha=qlora_lora_alpha,
+        r=lora_r,
+        lora_alpha=lora_alpha,
         target_modules=target_modules,
-        lora_dropout=qlora_dropout,
+        lora_dropout=lora_dropout,
         bias="none",
         task_type="CAUSAL_LM"
     )
     # Update PEFT_CONFIG string for consistent naming
-    PEFT_CONFIG = f"LoRa{qlora_r}"
+    PEFT_CONFIG = f"LoRa{lora_r}"
 
 if peft_config is not None:
     if quant_method is QuantMethod.QLORA:

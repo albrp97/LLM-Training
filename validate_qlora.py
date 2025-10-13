@@ -60,10 +60,10 @@ def validate_qlora_configuration():
     from peft import LoraConfig
     import torch
     
-    # QLoRA parameters (matching training script defaults)
-    qlora_r = 64
-    qlora_lora_alpha = 16
-    qlora_dropout = 0.05
+    # LoRA parameters (reused for QLoRA, matching training script)
+    lora_r = 256
+    lora_alpha = 16
+    lora_dropout = 0.1
     keep_lm_head_fp16 = False
     
     # 1. Test QuantMethod parsing
@@ -103,9 +103,9 @@ def validate_qlora_configuration():
                 "double_quant": True,
                 "base_quant_type": "nf4",
                 "compute_dtype": "bfloat16",
-                "qlora_r": qlora_r,
-                "qlora_lora_alpha": qlora_lora_alpha,
-                "qlora_dropout": qlora_dropout,
+                "lora_r": lora_r,
+                "lora_alpha": lora_alpha,
+                "lora_dropout": lora_dropout,
                 "keep_lm_head_fp16": keep_lm_head_fp16,
             },
         )
@@ -118,10 +118,10 @@ def validate_qlora_configuration():
     try:
         target_modules = ["q_proj", "k_proj", "v_proj", "o_proj"]
         lora_config = LoraConfig(
-            r=qlora_r,
-            lora_alpha=qlora_lora_alpha,
+            r=lora_r,
+            lora_alpha=lora_alpha,
             target_modules=target_modules,
-            lora_dropout=qlora_dropout,
+            lora_dropout=lora_dropout,
             bias="none",
             task_type="CAUSAL_LM"
         )
