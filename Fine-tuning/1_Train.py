@@ -14,8 +14,8 @@ from datasets import Dataset
 
 train = True
 
-DATASET_CHOICE = "openmath"       
-# options: "openmath", "squad"
+DATASET_CHOICE = None
+# options: None (saves base model), "openmath", "squad"
 # arc results have no variation, so we will not test arc for now
 # we will not test boolq for now
 
@@ -181,12 +181,112 @@ def drop_nulls(obj):
     else:
         return obj
 
+
+def build_quantization_config():
+    """Create the quantization configuration for the selected method."""
+    match QUANT_METHOD:
+        case "QLORA":
+            load_in_4bit = True  # Load the model in 4-bit
+            bnb_4bit_quant_type = "nf4"
+            bnb_4bit_use_double_quant = True  # Saves more memory at no additional performance
+            bnb_4bit_compute_dtype = torch.bfloat16
+
+            return BitsAndBytesConfig(
+                load_in_4bit=load_in_4bit,
+                bnb_4bit_quant_type=bnb_4bit_quant_type,
+                bnb_4bit_use_double_quant=bnb_4bit_use_double_quant,
+                bnb_4bit_compute_dtype=bnb_4bit_compute_dtype,
+            )
+
+        case "AWQ":
+            raise NotImplementedError("Implement AdaRound here")
+
+        case "GPTQ":
+            raise NotImplementedError("Implement AdaRound here")
+
+        case "adaround":
+            raise NotImplementedError("Implement AdaRound here")
+
+        case "brecq":
+            raise NotImplementedError("Implement BRECQ here")
+
+        case "quarot":
+            raise NotImplementedError("Implement QuaRot here")
+
+        case _:
+            return None
+
 # ============================================================
 # Dataset selection
 # ============================================================
 
 
-if DATASET_CHOICE == "arc":
+if DATASET_CHOICE is None:
+    quantization_config = build_quantization_config()
+    model, tokenizer = load_model_and_tokenizer(MODEL_NAME, quantization_config, device_map)
+    base_model_name = MODEL_NAME.split("/")[-1]
+    new_model_name = f"{base_model_name}-base"
+    output_dir = f"Models/{new_model_name}"
+
+    total_params = 0
+    trainable_params = 0
+    for _, param in model.named_parameters():
+        total_params += param.numel()
+        if param.requires_grad:
+            trainable_params += param.numel()
+
+    percentage_trainable = (trainable_params / total_params * 100) if total_params else 0.0
+
+    model.save_pretrained(output_dir, safe_serialization=True)
+    tokenizer.save_pretrained(output_dir)
+    model.config.save_pretrained(output_dir)
+
+    base_metadata = {
+        "model_info": {
+            "model_name": new_model_name,
+            "base_model": MODEL_NAME,
+            "fine_tuning_date": datetime.now().isoformat(),
+            "model_type": "CausalLM",
+            "has_quantization": quantization_config is not None,
+            "total_params": total_params,
+            "trainable_params": trainable_params,
+            "percentage_trainable": percentage_trainable,
+            "notes": "Base model snapshot without fine-tuning.",
+        },
+        "training_parameters": {
+            "train": False,
+            "dataset_choice": DATASET_CHOICE,
+            "finetuning_strategy": None,
+            "quantization_method": QUANT_METHOD,
+        },
+        "peft_config": None,
+        "quantization_config": safe_serialize(quantization_config) if quantization_config else None,
+        "training_stats": {
+            "total_steps": 0,
+            "epochs_completed": 0,
+        },
+        "hardware_info": {
+            "device": str(model.device),
+            "dtype": str(model.dtype),
+            "total_params": total_params,
+            "trainable_params": trainable_params,
+            "percentage_trainable": percentage_trainable,
+            "vram_peaks": {
+                "overall_max_reserved_gb": 0.0,
+                "overall_max_allocated_gb": 0.0,
+                "per_gpu": [],
+            },
+        },
+    }
+
+    clean_metadata = drop_nulls(base_metadata)
+
+    with open(f"{output_dir}/training_metadata.json", "w", encoding="utf-8") as f:
+        json.dump(clean_metadata, f, indent=4, ensure_ascii=False)
+
+    print(f"\nNo dataset selected. Saved base model and metadata to: {output_dir}\n")
+    raise SystemExit(0)
+elif DATASET_CHOICE == "arc":
     df = pd.read_parquet("Datasets/train-ai2_arc.parquet")
 elif DATASET_CHOICE == "openmath":
     df = pd.read_parquet("Datasets/train-OpenMathInstruct-2.parquet")
@@ -205,37 +305,7 @@ print(f"\nLoaded dataset: {DATASET_CHOICE}\nNumber of samples: {len(df)}\n")
 # QUANTIZATION METHOD
 # --------------------------------------------
 
-match QUANT_METHOD:
-    case "QLORA":
-        load_in_4bit = True  # Load the model in 4-bit
-        bnb_4bit_quant_type = "nf4"
-        bnb_4bit_use_double_quant = True  # Saves more memory at no additional performance
-        bnb_4bit_compute_dtype = torch.bfloat16
-
-        quantization_config = BitsAndBytesConfig(
-            load_in_4bit=load_in_4bit,
-            bnb_4bit_quant_type=bnb_4bit_quant_type,
-            bnb_4bit_use_double_quant=bnb_4bit_use_double_quant,
-            bnb_4bit_compute_dtype=bnb_4bit_compute_dtype,
-        )
-
-    case "AWQ":
-        raise NotImplementedError("Implement AdaRound here")
-
-    case "GPTQ":
-        raise NotImplementedError("Implement AdaRound here")
-
-    case "adaround":
-        raise NotImplementedError("Implement AdaRound here")
-
-    case "brecq":
-        raise NotImplementedError("Implement BRECQ here")
-
-    case "quarot":
-        raise NotImplementedError("Implement QuaRot here")
-
-    case _:
-        quantization_config = None
+quantization_config = build_quantization_config()
 
 model, tokenizer = load_model_and_tokenizer(MODEL_NAME, quantization_config, device_map)
 
