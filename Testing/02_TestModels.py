@@ -3,14 +3,35 @@ import json
 import math
 import argparse
 import gc
+import sys
 import torch
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Dict, Optional, Tuple
+
 import pandas as pd
 import string
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
+    BitsAndBytesConfig,
+)
+
+try:
+    from transformers import HQQConfig  # type: ignore
+except ImportError:  # pragma: no cover - optional dependency
+    HQQConfig = None  # type: ignore
+
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent.parent))
+
+from quantization_utils import (
+    QuantMethod,
+    QuantizationSpec,
+    detect_method_from_path,
+    load_quant_metadata,
 )
 from tqdm.auto import tqdm
 import statistics as stats
@@ -18,7 +39,7 @@ import time
 from collections import Counter
 
 
-datasetTrunc = None
+TRUNC_EVAL = 2  # Set to a positive int to cap samples per dataset during evaluation.
 VERBOSE = False  # set to False to hide per-dataset logs and summary prints
 
 datasets_info = {
@@ -67,10 +88,182 @@ datasets_info = {
 device_map = {"": 0} if torch.cuda.is_available() else {"": "cpu"}
 
 
-# Define custom load function
-def load_custom_model(model_dir):
-    model = AutoModelForCausalLM.from_pretrained(model_dir, device_map=device_map)
-    tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
+@dataclass
+class QuantContext:
+    method: Optional[QuantMethod]
+    source: str
+    spec: Optional[QuantizationSpec]
+    raw_metadata: Optional[Dict[str, Any]]
+    training_metadata: Optional[Dict[str, Any]]
+    quant_file_metadata: Optional[Dict[str, Any]]
+    tag: Optional[str]
+
+
+def _read_json(path: Path) -> Optional[Dict[str, Any]]:
+    if not path.exists():
+        return None
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            return json.load(handle)
+    except json.JSONDecodeError:
+        print(f"[WARN] Could not parse JSON metadata at {path}", file=sys.stderr)
+        return None
+
+
+def resolve_quant_context(model_name: str, override: str) -> QuantContext:
+    model_path = Path(model_name)
+    training_metadata = _read_json(model_path / "training_metadata.json") if model_path.exists() else None
+    quant_file_metadata = _read_json(model_path / "quantization_metadata.json") if model_path.exists() else None
+
+    training_quant = training_metadata.get("quantization") if training_metadata else None
+    training_spec = load_quant_metadata(training_quant) if training_quant else None
+
+    quant_file_spec = load_quant_metadata(quant_file_metadata) if quant_file_metadata else None
+
+    method: Optional[QuantMethod] = None
+    spec: Optional[QuantizationSpec] = None
+    raw_metadata: Optional[Dict[str, Any]] = None
+    source = "auto"
+    tag: Optional[str] = None
+
+    override_value = override.lower()
+    if override_value != "auto":
+        method = QuantMethod.from_any(override_value)
+        source = "cli"
+    elif quant_file_spec:
+        method = quant_file_spec.method
+        spec = quant_file_spec
+        raw_metadata = quant_file_metadata
+        source = "quantization_metadata"
+        tag = quant_file_metadata.get("quant_tag") if isinstance(quant_file_metadata, dict) else None
+    elif training_spec:
+        method = training_spec.method
+        spec = training_spec
+        raw_metadata = training_quant
+        source = "training_metadata"
+        tag = training_metadata.get("model_info", {}).get("quantization_tag") if training_metadata else None
+    else:
+        detected = detect_method_from_path(model_name)
+        method = detected
+        source = "path" if detected else "unknown"
+
+    if override_value != "auto":
+        if quant_file_spec and quant_file_spec.method == method:
+            spec = quant_file_spec
+            raw_metadata = quant_file_metadata
+            tag = quant_file_metadata.get("quant_tag") if isinstance(quant_file_metadata, dict) else tag
+        elif training_spec and training_spec.method == method:
+            spec = training_spec
+            raw_metadata = training_quant
+            tag = training_metadata.get("model_info", {}).get("quantization_tag") if training_metadata else tag
+        else:
+            spec = quant_file_spec or training_spec
+            raw_metadata = quant_file_metadata or training_quant
+            if not tag:
+                if isinstance(quant_file_metadata, dict):
+                    tag = quant_file_metadata.get("quant_tag")
+                if not tag and training_metadata:
+                    tag = training_metadata.get("model_info", {}).get("quantization_tag")
+
+    return QuantContext(
+        method=method,
+        source=source,
+        spec=spec,
+        raw_metadata=raw_metadata if isinstance(raw_metadata, dict) else None,
+        training_metadata=training_metadata,
+        quant_file_metadata=quant_file_metadata,
+        tag=tag,
+    )
+
+
+def resolve_kv_dtype(cli_value: str, spec: Optional[QuantizationSpec]) -> str:
+    if cli_value.lower() != "auto":
+        return cli_value
+    if spec and spec.kv_cache_bits:
+        if spec.kv_cache_bits >= 16:
+            return "fp16"
+        if spec.kv_cache_bits == 8:
+            return "int8"
+    return "auto"
+
+
+def build_quant_info(quant: QuantContext, kv_cache_dtype: str) -> Dict[str, Any]:
+    spec = quant.spec
+    calibration = spec.calibration if spec else None
+    method_name = quant.method.value if quant.method else "NoQuant"
+    return {
+        "method": method_name,
+        "source": quant.source,
+        "weights_bits": spec.weights_bits if spec else None,
+        "activations_bits": spec.activations_bits if spec else None,
+        "kv_cache_bits": spec.kv_cache_bits if spec else None,
+        "group_size": spec.group_size if spec else None,
+        "lm_head_dtype": spec.lm_head_dtype if spec else None,
+        "backend": spec.backend if spec else None,
+        "kv_cache_dtype": kv_cache_dtype,
+        "calibration_size": calibration.get("size") if isinstance(calibration, dict) else None,
+        "calibration_hash": calibration.get("hash") if isinstance(calibration, dict) else None,
+        "quant_tag": quant.tag,
+    }
+
+
+def load_model_with_quant(model_name: str, quant: QuantContext, kv_cache_dtype: str):
+    load_kwargs: Dict[str, Any] = {
+        "device_map": device_map,
+        "torch_dtype": "auto",
+        "trust_remote_code": True,
+    }
+    # Only add kv_cache_dtype if it's not auto
+    if kv_cache_dtype != "auto":
+        load_kwargs["kv_cache_dtype"] = kv_cache_dtype
+
+    method = quant.method
+    if method is QuantMethod.QLORA:
+        # QLoRA models already have quantization config saved, so just load normally
+        # Remove torch_dtype as BitsAndBytes handles it
+        load_kwargs.pop("torch_dtype", None)
+        # Try loading with kv_cache_dtype first, fall back without it if not supported
+        try:
+            model = AutoModelForCausalLM.from_pretrained(model_name, **load_kwargs)
+        except TypeError as e:
+            if "kv_cache_dtype" in str(e) and "kv_cache_dtype" in load_kwargs:
+                # Remove kv_cache_dtype and try again
+                load_kwargs_fallback = {k: v for k, v in load_kwargs.items() if k != "kv_cache_dtype"}
+                model = AutoModelForCausalLM.from_pretrained(model_name, **load_kwargs_fallback)
+            else:
+                raise
+    elif method is QuantMethod.HQQ:
+        if HQQConfig is None:
+            raise RuntimeError(
+                "Transformers build does not expose HQQConfig. Install transformers>=4.44 to load HQQ weights."
+            )
+        try:
+            hqq_config = HQQConfig.from_pretrained(model_name)
+        except Exception as exc:  # pragma: no cover - optional dependency failure
+            raise RuntimeError(
+                f"Failed to load HQQ configuration from '{model_name}'. "
+                "Ensure `tools/quantize.py run --method hqq` was executed successfully."
+            ) from exc
+        model = AutoModelForCausalLM.from_pretrained(model_name, config=hqq_config, **load_kwargs)
+    elif method in {QuantMethod.SMOOTH_QUANT, QuantMethod.QUA_ROT}:
+        raise RuntimeError(
+            f"{method.value} weights require runtime hooks. "
+            "Run `python tools/quantize.py run --method "
+            f"{method.value.lower()}` to materialise the quantised artefacts first."
+        )
+    else:
+        # Try loading with kv_cache_dtype first, fall back without it if not supported
+        try:
+            model = AutoModelForCausalLM.from_pretrained(model_name, **load_kwargs)
+        except TypeError as e:
+            if "kv_cache_dtype" in str(e) and "kv_cache_dtype" in load_kwargs:
+                # Remove kv_cache_dtype and try again
+                load_kwargs_fallback = {k: v for k, v in load_kwargs.items() if k != "kv_cache_dtype"}
+                model = AutoModelForCausalLM.from_pretrained(model_name, **load_kwargs_fallback)
+            else:
+                raise
+
+    tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
     return model, tokenizer
 
 
@@ -505,11 +698,46 @@ def parse_args():
         type=str,
         help="Path to the model directory or model name to evaluate",
     )
+    parser.add_argument(
+        "--quant-method",
+        type=str,
+        default="auto",
+        choices=[
+            "auto",
+            "gptq",
+            "quarot",
+            "adaround",
+            "brecq",
+            "awq",
+            "hqq",
+            "smoothquant",
+        ],
+        help="Quantisation method override (default: %(default)s).",
+    )
+    parser.add_argument(
+        "--kv-cache-dtype",
+        type=str,
+        default="auto",
+        choices=["auto", "fp16", "fp8_e5m2", "int8"],
+        help="Preferred KV cache dtype for loading (default: %(default)s).",
+    )
+    parser.add_argument(
+        "--trunc-eval",
+        type=int,
+        default=None,
+        help="Limit evaluation samples per dataset (default: environment/global TRUNC_EVAL).",
+    )
     return parser.parse_args()
 
 
-def evaluate_model(model_name: str, datasetTrunc: int = None, verbose: bool = False):
-    """Evaluate a model on all test datasets"""
+def evaluate_model(
+    model_name: str,
+    trunc_eval: Optional[int] = None,
+    verbose: bool = False,
+    quant_method: str = "auto",
+    kv_cache_dtype: str = "auto",
+):
+    """Evaluate a model on all test datasets."""
     metrics_dir = Path("Testing/metrics")
     metrics_dir.mkdir(parents=True, exist_ok=True)
     
@@ -521,11 +749,23 @@ def evaluate_model(model_name: str, datasetTrunc: int = None, verbose: bool = Fa
     print("------------\n")
     print(f"Evaluating model: {model_name}")
 
-    # Load model and tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name, torch_dtype="auto", device_map=device_map
+    try:
+        quant_context = resolve_quant_context(model_name, quant_method)
+    except ValueError as exc:
+        raise RuntimeError(f"Invalid quantisation method override: {exc}") from exc
+
+    resolved_kv_dtype = resolve_kv_dtype(kv_cache_dtype, quant_context.spec)
+    quant_info = build_quant_info(quant_context, resolved_kv_dtype)
+
+    print(
+        f"Resolved quantisation: {quant_info['method']} "
+        f"(source={quant_context.source}, kv_cache_dtype={resolved_kv_dtype})"
     )
+
+    try:
+        model, tokenizer = load_model_with_quant(model_name, quant_context, resolved_kv_dtype)
+    except RuntimeError as exc:
+        raise RuntimeError(f"Unable to load quantised model: {exc}") from exc
     
     # Start a fresh peak measurement for this model's evaluation
     if torch.cuda.is_available():
@@ -536,8 +776,8 @@ def evaluate_model(model_name: str, datasetTrunc: int = None, verbose: bool = Fa
     # Load datasets
     datasets = list(Path("Datasets").glob("test-*.parquet"))
     loaded = [(ds, pd.read_parquet(ds)) for ds in datasets]
-    if datasetTrunc is not None:
-        loaded = [(ds, df.head(datasetTrunc)) for ds, df in loaded]
+    if trunc_eval and trunc_eval > 0:
+        loaded = [(ds, df.head(trunc_eval)) for ds, df in loaded]
 
     total_samples = sum(len(df) for _, df in loaded)
     per_dataset = {}
@@ -579,6 +819,19 @@ def evaluate_model(model_name: str, datasetTrunc: int = None, verbose: bool = Fa
 
     # Generate final report
     model_report = generate_model_report(model_name, per_dataset, all_latencies, all_tokens)
+    model_report["quantization"] = quant_info
+    summary_quant = {
+        "method": quant_info["method"],
+        "weights_bits": quant_info["weights_bits"],
+        "group_size": quant_info["group_size"],
+        "activations_bits": quant_info["activations_bits"],
+        "kv_cache_dtype": quant_info["kv_cache_dtype"],
+        "lm_head_dtype": quant_info["lm_head_dtype"],
+        "backend": quant_info["backend"],
+        "calibration_size": quant_info["calibration_size"],
+        "calibration_hash": quant_info["calibration_hash"],
+    }
+    model_report.setdefault("summary", {})["quantization"] = summary_quant
     
     if hardware:
         model_report["hardware"] = hardware
@@ -783,7 +1036,17 @@ def log_dataset_results(dataset_name, kind, results, verbose):
 
 def main():
     args = parse_args()
-    evaluate_model(args.model_name, datasetTrunc, VERBOSE)
+    try:
+        evaluate_model(
+            args.model_name,
+            args.trunc_eval if args.trunc_eval is not None else TRUNC_EVAL,
+            VERBOSE,
+            quant_method=args.quant_method,
+            kv_cache_dtype=args.kv_cache_dtype,
+        )
+    except RuntimeError as exc:
+        print(f"[ERROR] {exc}", file=sys.stderr)
+        sys.exit(2)
 
 
 if __name__ == "__main__":
