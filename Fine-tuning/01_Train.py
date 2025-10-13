@@ -80,12 +80,12 @@ merge_after_train = True
 # Keep LM head in fp16 when merging (experimental ablation flag)
 keep_lm_head_fp16 = False
 
-QUANT_METHOD = "BRECQ"  
+QUANT_METHOD = "AWQ"  
 # options: "NoQuant", "QLORA", "GPTQ", "QuaRot", "AdaRound", "BRECQ", "AWQ", "HQQ", "SmoothQuant"
 
 # Target settings used for PTQ pipelines (applied post-training via tools/quantize.py)
 PTQ_TARGET_WEIGHTS_BITS = 4
-PTQ_TARGET_GROUP_SIZE = 64  # Default group size for BRECQ 
+PTQ_TARGET_GROUP_SIZE = 128  # Default group size for AWQ 
 PTQ_TARGET_ACTS_BITS = 8
 PTQ_TARGET_KV_BITS = 8
 

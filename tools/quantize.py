@@ -513,6 +513,267 @@ def quantize_with_brecq(
     
     return dst, metadata
 
+
+def quantize_with_awq(
+    src: Path, 
+    dst: Path, 
+    calib_path: Path, 
+    bits: int = 4, 
+    group_size: int = 128, 
+    seed: int = 13, 
+    skip_lm_head: bool = True,
+    backend: str = "awq"
+) -> Tuple[Path, Dict[str, str]]:
+    """
+    AWQ: Activation-aware Weight Quantization.
+    
+    Performs activation-aware weight quantization by collecting activation statistics
+    from calibration data to compute optimal per-channel scaling factors that preserve
+    important activations while quantizing weights to target bits.
+    
+    Args:
+        src: Path to source FP16/BF16 model
+        dst: Destination directory for quantized model
+        calib_path: Path to calibration prompts file
+        bits: Target weight quantization bits (default: 4)
+        group_size: Quantization group size (default: 128)
+        seed: Random seed for reproducibility (default: 13)
+        skip_lm_head: Keep LM head in FP16 (default: True)
+        backend: Backend identifier for compatibility (default: "awq")
+        
+    Returns:
+        Tuple of (destination_path, metadata_dict)
+    """
+    import torch
+    import torch.nn as nn
+    import numpy as np
+    import random
+    import math
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from tqdm import tqdm
+    
+    # Set seeds for reproducibility
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+    
+    print(f"[AWQ] Loading model from {src}")
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    
+    # Load model and tokenizer
+    model = AutoModelForCausalLM.from_pretrained(
+        src, 
+        torch_dtype=torch.float16,
+        device_map="auto" if torch.cuda.is_available() else None
+    )
+    tokenizer = AutoTokenizer.from_pretrained(src)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    
+    # Load calibration data
+    print(f"[AWQ] Loading calibration data from {calib_path}")
+    with open(calib_path, 'r', encoding='utf-8') as f:
+        calibration_prompts = [line.strip() for line in f if line.strip()]
+    
+    # Limit calibration data for faster testing (AWQ typically uses 128-512 samples)
+    max_calib_samples = min(len(calibration_prompts), 256)
+    calibration_prompts = calibration_prompts[:max_calib_samples]
+    print(f"[AWQ] Using {len(calibration_prompts)} calibration prompts for activation collection")
+    
+    # Activation collection hooks and storage
+    activation_stats = {}
+    
+    def register_activation_hooks(model):
+        """Register forward hooks to collect activation statistics."""
+        hooks = []
+        
+        def hook_fn(name):
+            def hook(module, input, output):
+                if name not in activation_stats:
+                    activation_stats[name] = []
+                
+                # Store input activation magnitudes (AWQ focuses on input activations)
+                if isinstance(input, tuple) and len(input) > 0:
+                    act = input[0].detach()
+                    if act.dim() >= 2:  # Ensure we have batch and feature dimensions
+                        # Compute per-channel activation magnitudes
+                        act_magnitude = torch.mean(torch.abs(act), dim=tuple(range(act.dim()-1)))
+                        activation_stats[name].append(act_magnitude.cpu())
+            return hook
+        
+        for name, module in model.named_modules():
+            if isinstance(module, nn.Linear):
+                hook = module.register_forward_hook(hook_fn(name))
+                hooks.append(hook)
+        
+        return hooks
+    
+    # Collect activation statistics
+    print("[AWQ] Collecting activation statistics from calibration data...")
+    model.eval()
+    hooks = register_activation_hooks(model)
+    
+    try:
+        with torch.no_grad():
+            for i, prompt in enumerate(tqdm(calibration_prompts, desc="Calibration", leave=False)):
+                if not prompt.strip():
+                    continue
+                
+                try:
+                    # Tokenize input
+                    inputs = tokenizer(
+                        prompt, 
+                        return_tensors="pt", 
+                        truncation=True, 
+                        max_length=512,  # Limit sequence length for efficiency
+                        padding=False
+                    )
+                    
+                    if torch.cuda.is_available():
+                        inputs = {k: v.to(model.device) for k, v in inputs.items()}
+                    
+                    # Forward pass to collect activations
+                    _ = model(**inputs)
+                    
+                except Exception as e:
+                    print(f"[AWQ] Warning: Failed to process calibration sample {i}: {e}")
+                    continue
+    finally:
+        # Remove hooks
+        for hook in hooks:
+            hook.remove()
+    
+    print(f"[AWQ] Collected activation statistics for {len(activation_stats)} layers")
+    
+    # Compute per-layer activation-aware scaling factors
+    layer_scales = {}
+    for name, activations in activation_stats.items():
+        if activations:
+            # Compute average activation magnitude across all samples
+            stacked_acts = torch.stack(activations)  # [num_samples, num_channels]
+            avg_magnitude = torch.mean(stacked_acts, dim=0)  # [num_channels]
+            
+            # AWQ scaling: use activation magnitude to determine importance
+            # Higher activations get more precision (less aggressive quantization)
+            scale_factor = torch.sqrt(avg_magnitude + 1e-8)  # Add epsilon for stability
+            layer_scales[name] = scale_factor
+    
+    def awq_quantize_weight(weight, scale_factor=None, bits=4, group_size=128, show_progress=False):
+        """AWQ-style weight quantization with activation-aware scaling."""
+        original_shape = weight.shape
+        weight_2d = weight.view(-1, weight.shape[-1])  # [*, out_features]
+        
+        if scale_factor is not None:
+            # Apply activation-aware scaling
+            scaled_weight = weight_2d / scale_factor.unsqueeze(0).to(weight.device)
+        else:
+            scaled_weight = weight_2d
+        
+        # Group-wise quantization
+        out_features = scaled_weight.shape[-1]
+        num_groups = math.ceil(out_features / group_size)
+        quantized_groups = []
+        
+        if show_progress and num_groups > 10:
+            iterator = tqdm(range(num_groups), desc=f"AWQ W{bits} groups", leave=False)
+        else:
+            iterator = range(num_groups)
+        
+        for group_idx in iterator:
+            start_idx = group_idx * group_size
+            end_idx = min((group_idx + 1) * group_size, out_features)
+            group_weight = scaled_weight[:, start_idx:end_idx]
+            
+            # Symmetric quantization for the group
+            weight_max = torch.max(torch.abs(group_weight))
+            if weight_max == 0:
+                quantized_groups.append(group_weight)
+                continue
+            
+            # Compute quantization parameters
+            qmax = 2 ** (bits - 1) - 1
+            scale = weight_max / qmax
+            
+            # Quantize and dequantize
+            quantized = torch.clamp(torch.round(group_weight / scale), -qmax, qmax)
+            dequantized = quantized * scale
+            
+            quantized_groups.append(dequantized)
+        
+        # Reconstruct full weight
+        result = torch.cat(quantized_groups, dim=-1)
+        
+        # Apply inverse scaling if scaling was used
+        if scale_factor is not None:
+            result = result * scale_factor.unsqueeze(0).to(weight.device)
+        
+        return result.view(original_shape).to(weight.dtype)
+    
+    # Apply AWQ quantization to all Linear layers
+    print("[AWQ] Applying activation-aware quantization to model layers...")
+    model.eval()
+    
+    # Collect all Linear layers to quantize
+    linear_layers = []
+    total_layers = 0
+    for name, module in model.named_modules():
+        if isinstance(module, nn.Linear):
+            total_layers += 1
+            # Skip LM head if requested
+            if skip_lm_head and ('lm_head' in name.lower() or 'output' in name.lower() or name.endswith('head')):
+                continue
+            linear_layers.append((name, module))
+    
+    skipped_layers = total_layers - len(linear_layers)
+    print(f"[AWQ] Found {total_layers} Linear layers, quantizing {len(linear_layers)} (skipping {skipped_layers} LM head layers)")
+    
+    print("[AWQ] Applying activation-aware weight quantization...")
+    quantized_layers = []
+    
+    with torch.no_grad():
+        for name, module in tqdm(linear_layers, desc="AWQ Quantization"):
+            if hasattr(module, 'weight') and module.weight is not None:
+                # Get activation-aware scale for this layer
+                scale_factor = layer_scales.get(name)
+                
+                # Apply AWQ quantization
+                original_weight = module.weight.data.clone()
+                quantized_weight = awq_quantize_weight(
+                    original_weight, 
+                    scale_factor=scale_factor,
+                    bits=bits, 
+                    group_size=group_size,
+                    show_progress=False
+                )
+                
+                # Update module weight
+                module.weight.data = quantized_weight
+                quantized_layers.append(name)
+    
+    print(f"[AWQ] Quantized {len(quantized_layers)} layers with activation-aware scaling")
+    
+    # Save quantized model
+    print(f"[AWQ] Saving quantized model to {dst}")
+    model.save_pretrained(dst, safe_serialization=True)
+    tokenizer.save_pretrained(dst)
+    
+    # Create metadata
+    metadata = {
+        "method": "AWQ",
+        "weights_bits": bits,
+        "activations_bits": None,
+        "group_size": group_size,
+        "calibration_samples": len(calibration_prompts),
+        "skip_lm_head": skip_lm_head,
+        "seed": seed,
+        "backend": backend,
+        "quantized_layers": len(quantized_layers),
+        "activation_aware": True,
+        "layers_with_scaling": len([name for name in quantized_layers if name in layer_scales])
+    }
+    
+    return dst, metadata
+
 # ---------------------------------------------------------------------------
 # Handler stubs
 # ---------------------------------------------------------------------------
@@ -584,11 +845,22 @@ def quantize_brecq(src: Path, dst: Path, spec: QuantizationSpec, args: argparse.
 
 
 def quantize_awq(src: Path, dst: Path, spec: QuantizationSpec, args: argparse.Namespace) -> HandlerResult:
-    _require(
-        "awq",
-        "AWQ quantisation requires the `autoawq`/`awq` package. Install it with `pip install autoawq`.",
+    """
+    AWQ: Activation-aware Weight Quantization.
+    
+    Implements activation-aware weight quantization that collects activation statistics
+    to compute optimal scaling factors that preserve important activations.
+    """
+    return quantize_with_awq(
+        src=src,
+        dst=dst,
+        calib_path=args.calib,
+        bits=spec.weights_bits or 4,
+        group_size=spec.group_size or 128,
+        seed=args.seed,
+        skip_lm_head=args.keep_lm_head_fp16,
+        backend="awq"
     )
-    raise NotImplementedError("AWQ quantisation stub: integrate your AWQ workflow here.")
 
 
 def quantize_hqq(src: Path, dst: Path, spec: QuantizationSpec, args: argparse.Namespace) -> HandlerResult:

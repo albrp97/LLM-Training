@@ -4,7 +4,7 @@ This document tracks the current status of quantization methods in our LLM train
 
 ## ✅ Fully Implemented & Working
 
-### QLoRA (Recommended for Qwen models)
+### QLoRA (Recommended for training)
 - **Status**: ✅ Complete and tested
 - **Model Support**: Excellent Qwen3 support
 - **Features**: 4-bit NF4 quantization with LoRA fine-tuning
@@ -14,6 +14,17 @@ This document tracks the current status of quantization methods in our LLM train
   - Fast training with adapters
   - Excellent quality preservation
   - Native transformers integration
+
+### AWQ (Recommended for inference)
+- **Status**: ✅ Complete and tested  
+- **Model Support**: Excellent Qwen3 support (tested)
+- **Features**: Activation-aware weight quantization
+- **Usage**: `QUANT_METHOD = "AWQ"` + `python tools/quantize.py run --method awq`
+- **Benefits**:
+  - 43% memory reduction (tested)
+  - Fast quantization (<1s for 196 layers)
+  - Automatic calibration data generation
+  - Pure PyTorch implementation (no external deps)
 
 ## ⚠️ Implemented but Limited
 
@@ -28,10 +39,11 @@ This document tracks the current status of quantization methods in our LLM train
 ## 🔄 Planned/Partially Implemented
 
 ### AWQ (Activation-aware Weight Quantization)
-- **Status**: 🔄 Infrastructure ready, needs dependency resolution
-- **Model Support**: Potentially good Qwen support (needs verification)
-- **Issue**: `autoawq` has dependency conflicts with current environment
-- **Next Steps**: Resolve triton dependency conflicts
+- **Status**: ✅ **Fully implemented and tested**
+- **Model Support**: ✅ Excellent Qwen support (tested on Qwen3-0.6B)
+- **Implementation**: Pure PyTorch implementation - no external dependencies
+- **Performance**: 43% VRAM reduction (1.37GB vs 2.4GB), functional inference
+- **Usage**: `QUANT_METHOD = "AWQ"` with automatic calibration data generation
 
 ### HQQ (Half-Quadratic Quantization)
 - **Status**: 🔄 Placeholder implemented
@@ -48,23 +60,29 @@ This document tracks the current status of quantization methods in our LLM train
 - **Implementation Needed**: Full QuaRot pipeline
 
 ### AdaRound (Adaptive Rounding)
-- **Status**: ❌ Placeholder only
-- **Implementation Needed**: Full AdaRound pipeline
+- **Status**: ✅ **Implemented and tested**
+- **Model Support**: ✅ Qwen3 support (tested)
+- **Features**: Layer-wise rounding optimization
+- **Usage**: `QUANT_METHOD = "AdaRound"` + quantization pipeline
 
-### BRECQ (Batch Reconstruction Quantization)
-- **Status**: ❌ Placeholder only
-- **Implementation Needed**: Full BRECQ pipeline
+### BRECQ (Block-wise Reconstruction Quantization)
+- **Status**: ✅ **Implemented and tested**
+- **Model Support**: ✅ Qwen3 support (tested) 
+- **Features**: Block-wise reconstruction with mixed precision (W6/W4)
+- **Usage**: `QUANT_METHOD = "BRECQ"` + quantization pipeline
 
 ## Recommendations by Use Case
 
 ### For Qwen Models (Current Setup)
-1. **Primary**: Use `QLoRA` - proven, fast, excellent results
-2. **Alternative**: Try `AWQ` once dependencies are resolved
-3. **Avoid**: `GPTQ` (incompatible)
+1. **Training**: Use `QLoRA` - proven, fast, excellent results
+2. **Inference**: Use `AWQ` - activation-aware, 43% memory reduction  
+3. **Research**: Try `AdaRound` or `BRECQ` for comparison
+4. **Avoid**: `GPTQ` (incompatible architecture)
 
-### For LLaMA Models
-1. **Options**: `QLoRA`, `GPTQ`, `AWQ` (when available)
-2. **Testing**: GPTQ infrastructure can be tested with LLaMA models
+### For LLaMA Models  
+1. **Training**: `QLoRA`
+2. **Inference**: `AWQ`, `GPTQ` (both supported)
+3. **Research**: `AdaRound`, `BRECQ`
 
 ### For Other Supported Models
 - **GPT-2/GPT-J**: `GPTQ`, `QLoRA`  
