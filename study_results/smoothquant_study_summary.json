@@ -1,0 +1,230 @@
+{
+  "study_type": "SmoothQuant W8A8 Post-Training Quantization",
+  "generated_at": "2025-10-14T21:50:24.197918",
+  "models_compared": {
+    "base": [
+      "Qwen3-0.6B-base",
+      "Qwen3-0.6B-base_smoothquant_w8a8"
+    ],
+    "finetuned": [
+      "Qwen3-0.6B-openmath_SFT_NoPeft_NoQuant",
+      "Qwen3-0.6B-openmath_SFT_NoPeft_NoQuant_smoothquant_w8a8"
+    ]
+  },
+  "overall_performance": {
+    "base_model_smoothquant_win_rate": 25.0,
+    "finetuned_model_smoothquant_win_rate": 25.0,
+    "overall_smoothquant_win_rate": 25.0,
+    "total_comparisons": 8
+  },
+  "detailed_results": {
+    "base_model": {
+      "impact_analysis": {
+        "arc_accuracy": {
+          "base_value": 50.0,
+          "quant_value": 0.0,
+          "absolute_change": -50.0,
+          "percent_change": -100.0,
+          "winner": "NoQuant"
+        },
+        "arc_f1": {
+          "base_value": 0.5111,
+          "quant_value": 0.0,
+          "absolute_change": -0.5111,
+          "percent_change": -100.0,
+          "winner": "NoQuant"
+        },
+        "openmath_accuracy": {
+          "base_value": 10.0,
+          "quant_value": 0.0,
+          "absolute_change": -10.0,
+          "percent_change": -100.0,
+          "winner": "NoQuant"
+        },
+        "squad_accuracy": {
+          "base_value": 5.0,
+          "quant_value": 50.0,
+          "absolute_change": 45.0,
+          "percent_change": 900.0,
+          "winner": "SmoothQuant"
+        }
+      },
+      "dataset_analysis": {
+        "arc": {
+          "metrics": {
+            "accuracy": {
+              "base_value": 50.0,
+              "quant_value": 0.0,
+              "absolute_change": -50.0,
+              "percent_change": -100.0,
+              "winner": "NoQuant"
+            },
+            "f1": {
+              "base_value": 0.5111,
+              "quant_value": 0.0,
+              "absolute_change": -0.5111,
+              "percent_change": -100.0,
+              "winner": "NoQuant"
+            }
+          },
+          "summary": {
+            "wins": 0,
+            "losses": 2,
+            "total_metrics": 2,
+            "win_rate": 0.0
+          }
+        },
+        "openmath": {
+          "metrics": {
+            "accuracy": {
+              "base_value": 10.0,
+              "quant_value": 0.0,
+              "absolute_change": -10.0,
+              "percent_change": -100.0,
+              "winner": "NoQuant"
+            }
+          },
+          "summary": {
+            "wins": 0,
+            "losses": 1,
+            "total_metrics": 1,
+            "win_rate": 0.0
+          }
+        },
+        "squad": {
+          "metrics": {
+            "accuracy": {
+              "base_value": 5.0,
+              "quant_value": 50.0,
+              "absolute_change": 45.0,
+              "percent_change": 900.0,
+              "winner": "SmoothQuant"
+            }
+          },
+          "summary": {
+            "wins": 1,
+            "losses": 0,
+            "total_metrics": 1,
+            "win_rate": 100.0
+          }
+        }
+      }
+    },
+    "finetuned_model": {
+      "impact_analysis": {
+        "arc_accuracy": {
+          "base_value": 15.0,
+          "quant_value": 0.0,
+          "absolute_change": -15.0,
+          "percent_change": -100.0,
+          "winner": "NoQuant"
+        },
+        "arc_f1": {
+          "base_value": 0.2143,
+          "quant_value": 0.0,
+          "absolute_change": -0.2143,
+          "percent_change": -100.0,
+          "winner": "NoQuant"
+        },
+        "openmath_accuracy": {
+          "base_value": 0.0,
+          "quant_value": 0.0,
+          "absolute_change": 0.0,
+          "percent_change": 0,
+          "winner": "NoQuant"
+        },
+        "squad_accuracy": {
+          "base_value": 5.0,
+          "quant_value": 50.0,
+          "absolute_change": 45.0,
+          "percent_change": 900.0,
+          "winner": "SmoothQuant"
+        }
+      },
+      "dataset_analysis": {
+        "arc": {
+          "metrics": {
+            "accuracy": {
+              "base_value": 15.0,
+              "quant_value": 0.0,
+              "absolute_change": -15.0,
+              "percent_change": -100.0,
+              "winner": "NoQuant"
+            },
+            "f1": {
+              "base_value": 0.2143,
+              "quant_value": 0.0,
+              "absolute_change": -0.2143,
+              "percent_change": -100.0,
+              "winner": "NoQuant"
+            }
+          },
+          "summary": {
+            "wins": 0,
+            "losses": 2,
+            "total_metrics": 2,
+            "win_rate": 0.0
+          }
+        },
+        "openmath": {
+          "metrics": {
+            "accuracy": {
+              "base_value": 0.0,
+              "quant_value": 0.0,
+              "absolute_change": 0.0,
+              "percent_change": 0,
+              "winner": "NoQuant"
+            }
+          },
+          "summary": {
+            "wins": 0,
+            "losses": 1,
+            "total_metrics": 1,
+            "win_rate": 0.0
+          }
+        },
+        "squad": {
+          "metrics": {
+            "accuracy": {
+              "base_value": 5.0,
+              "quant_value": 50.0,
+              "absolute_change": 45.0,
+              "percent_change": 900.0,
+              "winner": "SmoothQuant"
+            }
+          },
+          "summary": {
+            "wins": 1,
+            "losses": 0,
+            "total_metrics": 1,
+            "win_rate": 100.0
+          }
+        }
+      }
+    }
+  },
+  "quantization_config": {
+    "method": "SmoothQuant",
+    "weights_bits": 8,
+    "activations_bits": 8,
+    "calibration_samples": 100,
+    "calibration_dataset": "openmath",
+    "layers_quantized": 197,
+    "preserve_lm_head": true
+  },
+  "evaluation_config": {
+    "datasets": [
+      "openmath",
+      "squad",
+      "arc",
+      "boolq"
+    ],
+    "samples_per_dataset": 20,
+    "primary_metrics": [
+      "accuracy",
+      "avg_abs_diff",
+      "f1",
+      "mcc"
+    ]
+  }
+}
