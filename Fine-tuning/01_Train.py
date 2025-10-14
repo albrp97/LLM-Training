@@ -20,6 +20,24 @@ from quantization_utils import (
     tag_quant,
 )
 
+# Import post-training quantization functions
+try:
+    sys.path.append(str(Path(__file__).parent.parent / "tools"))
+    import quantize
+    from quantize import (
+        quantize_with_gptq,
+        quantize_with_awq, 
+        quantize_with_hqq,
+        quantize_with_smoothquant,
+        quantize_with_quarot,
+        quantize_with_adaround,
+        quantize_with_brecq,
+    )
+    PTQ_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: PTQ functions not available: {e}")
+    PTQ_AVAILABLE = False
+
 
 # -----------------------------------------------------------
 # User configuration
@@ -201,6 +219,247 @@ def preprocess_function(df, context: bool):
 
 
 def safe_serialize(obj):
+    """Recursively serialize an object, handling non-serializable types."""
+    if obj is None:
+        return None
+    elif isinstance(obj, (str, int, float, bool)):
+        return obj
+    elif isinstance(obj, (list, tuple)):
+        return [safe_serialize(item) for item in obj]
+    elif isinstance(obj, dict):
+        return {key: safe_serialize(value) for key, value in obj.items()}
+    elif hasattr(obj, '__dict__'):
+        # For objects with attributes, serialize their __dict__
+        return {key: safe_serialize(value) for key, value in obj.__dict__.items()}
+    else:
+        # For other types, convert to string representation
+        return str(obj)
+
+
+def drop_nulls(obj):
+    """Recursively remove None values from nested dicts and lists."""
+    if isinstance(obj, dict):
+        return {k: drop_nulls(v) for k, v in obj.items() if v is not None}
+    elif isinstance(obj, list):
+        return [drop_nulls(item) for item in obj if item is not None]
+    else:
+        return obj
+
+
+def generate_calibration_data(dataset_choice: str, num_samples: int = 21) -> Path:
+    """
+    Generate calibration data file for quantization.
+    
+    Args:
+        dataset_choice: Dataset name ("openmath", "squad", etc.)
+        num_samples: Number of calibration samples to generate
+        
+    Returns:
+        Path to the generated calibration file
+    """
+    calib_dir = Path("Datasets")
+    calib_dir.mkdir(exist_ok=True)
+    
+    calib_filename = f"calibration_{dataset_choice or 'openmath'}_{num_samples}samples.txt"
+    calib_path = calib_dir / calib_filename
+    
+    # If file already exists and has enough samples, use it
+    if calib_path.exists():
+        with open(calib_path, 'r', encoding='utf-8') as f:
+            existing_lines = [line.strip() for line in f if line.strip()]
+            if len(existing_lines) >= num_samples:
+                print(f"Using existing calibration file: {calib_path} ({len(existing_lines)} samples)")
+                return calib_path
+    
+    print(f"Generating calibration data: {calib_path}")
+    
+    # Load the same dataset used for training
+    if dataset_choice == "openmath":
+        df = pd.read_parquet("Datasets/openmath_test.parquet")
+        questions = df["question"].tolist()
+    elif dataset_choice == "squad":
+        df = pd.read_parquet("Datasets/squad_test.parquet") 
+        questions = df["question"].tolist()
+    else:
+        # Fallback to a generic set of prompts
+        questions = [
+            "What is machine learning?",
+            "Explain quantum computing in simple terms.",
+            "How does neural network training work?",
+            "What are the benefits of renewable energy?",
+            "Describe the process of photosynthesis.",
+            "What is the difference between AI and ML?",
+            "How do large language models work?",
+            "Explain the concept of deep learning.",
+            "What is natural language processing?",
+            "How does computer vision work?",
+        ]
+    
+    # Select random samples
+    import random
+    if len(questions) > num_samples:
+        selected_questions = random.sample(questions, num_samples)
+    else:
+        selected_questions = questions
+    
+    # Save to calibration file
+    with open(calib_path, 'w', encoding='utf-8') as f:
+        for question in selected_questions:
+            f.write(f"{question.strip()}\n")
+    
+    print(f"Generated {len(selected_questions)} calibration samples in {calib_path}")
+    return calib_path
+
+
+def perform_post_training_quantization(
+    src_model_path: Path, 
+    quant_method: QuantMethod, 
+    quant_spec: QuantizationSpec
+) -> Optional[Path]:
+    """
+    Perform post-training quantization after model training/saving.
+    
+    Args:
+        src_model_path: Path to the trained/saved model
+        quant_method: Quantization method to apply
+        quant_spec: Quantization specification with parameters
+        
+    Returns:
+        Path to quantized model or None if no quantization applied
+    """
+    if not PTQ_AVAILABLE:
+        print(f"Warning: PTQ functions not available, skipping {quant_method.value} quantization")
+        return None
+        
+    if quant_method not in PTQ_METHODS:
+        # No PTQ needed for NoQuant or QLoRA
+        return None
+    
+    print(f"\n=== Post-Training Quantization: {quant_method.value} ===")
+    
+    # Generate quantized model path
+    base_name = src_model_path.name
+    quantized_name = base_name.replace("_NoQuant", f"_{tag_quant(quant_spec)}")
+    quantized_path = src_model_path.parent / quantized_name
+    
+    # Prepare calibration data path
+    if quant_method == QuantMethod.HQQ:
+        # HQQ doesn't need calibration data
+        calib_path = None
+    else:
+        # Generate or find calibration data
+        calib_path = generate_calibration_data(DATASET_CHOICE or "openmath", num_samples=21)
+        
+        if not calib_path.exists():
+            print(f"Error: Could not generate calibration data")
+            return None
+    
+    try:
+        # Map quantization methods to their functions
+        quant_functions = {
+            QuantMethod.GPTQ: lambda: quantize_with_gptq(
+                src=src_model_path,
+                dst=quantized_path, 
+                calib_path=calib_path,
+                bits=quant_spec.weights_bits or 4,
+                group_size=quant_spec.group_size or 64,
+                keep_lm_head_fp16=quant_spec.lm_head_dtype == "fp16",
+                symmetric=quant_spec.symmetric if quant_spec.symmetric is not None else True,
+                seed=13
+            ),
+            QuantMethod.AWQ: lambda: quantize_with_awq(
+                src=src_model_path,
+                dst=quantized_path,
+                calib_path=calib_path, 
+                bits=quant_spec.weights_bits or 4,
+                group_size=quant_spec.group_size or 128,
+                seed=13,
+                skip_lm_head=quant_spec.lm_head_dtype == "fp16"
+            ),
+            QuantMethod.HQQ: lambda: quantize_with_hqq(
+                src=src_model_path,
+                dst=quantized_path,
+                bits=quant_spec.weights_bits or 4,
+                group_size=quant_spec.group_size or 64,
+                seed=13
+            ),
+            QuantMethod.SMOOTH_QUANT: lambda: quantize_with_smoothquant(
+                src=src_model_path,
+                dst=quantized_path,
+                calib_path=calib_path,
+                w_bits=quant_spec.weights_bits or 8,
+                a_bits=quant_spec.activations_bits or 8,
+                seed=13,
+                alpha=quant_spec.extras.get("alpha", 0.5) if quant_spec.extras else 0.5
+            ),
+            QuantMethod.QUA_ROT: lambda: quantize_with_quarot(
+                src=src_model_path,
+                dst=quantized_path,
+                calib_path=calib_path,
+                w_bits=quant_spec.weights_bits or 4,
+                a_bits=quant_spec.activations_bits or 4,
+                kv_bits=quant_spec.kv_cache_bits or 4,
+                group_size=quant_spec.group_size or 64,
+                seed=13
+            ),
+            QuantMethod.ADA_ROUND: lambda: quantize_with_adaround(
+                src=src_model_path,
+                dst=quantized_path,
+                calib_path=calib_path,
+                bits=quant_spec.weights_bits or 4,
+                group_size=quant_spec.group_size or 128,
+                symmetric=quant_spec.symmetric if quant_spec.symmetric is not None else True,
+                seed=13,
+                skip_lm_head=quant_spec.lm_head_dtype == "fp16"
+            ),
+            QuantMethod.BRECQ: lambda: quantize_with_brecq(
+                src=src_model_path,
+                dst=quantized_path,
+                calib_path=calib_path,
+                bits=quant_spec.weights_bits or 4,
+                attn_bits=quant_spec.extras.get("attention_bits", 6) if quant_spec.extras else 6,
+                group_size=quant_spec.group_size or 64,
+                seed=13,
+                mixed_precision=quant_spec.extras.get("mixed_precision", True) if quant_spec.extras else True
+            ),
+        }
+        
+        if quant_method in quant_functions:
+            print(f"Applying {quant_method.value} quantization...")
+            print(f"Source: {src_model_path}")
+            print(f"Target: {quantized_path}")
+            if calib_path:
+                print(f"Calibration: {calib_path}")
+            else:
+                print("Calibration: Not required (calibration-free method)")
+            
+            # Execute quantization
+            result = quant_functions[quant_method]()
+            
+            if result and len(result) >= 1:
+                actual_path = result[0] if isinstance(result, tuple) else result
+                print(f"✅ {quant_method.value} quantization completed")
+                print(f"Quantized model saved to: {actual_path}")
+                
+                # Optionally remove the unquantized model to save space
+                if src_model_path != actual_path:
+                    print(f"Removing unquantized model: {src_model_path}")
+                    import shutil
+                    shutil.rmtree(src_model_path)
+                
+                return Path(actual_path)
+            else:
+                print(f"❌ {quant_method.value} quantization failed")
+                return None
+        else:
+            print(f"Warning: Quantization method {quant_method.value} not implemented")
+            return None
+            
+    except Exception as e:
+        print(f"❌ Error during {quant_method.value} quantization: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
     """Converts no serializable objects to serializable formats."""
     if isinstance(obj, (str, int, float, bool, type(None))):
         return obj
@@ -779,6 +1038,21 @@ if train:
     print("  - training_metadata.json")
     print("  - tokenizer files")
 
+    # === POST-TRAINING QUANTIZATION ===
+    # Apply post-training quantization if needed
+    final_model_path = output_dir
+    quantized_path = perform_post_training_quantization(
+        src_model_path=Path(output_dir),
+        quant_method=quant_method,
+        quant_spec=quant_spec
+    )
+    
+    if quantized_path:
+        final_model_path = quantized_path
+        print(f"\n🎯 Final model location: {final_model_path}")
+    else:
+        print(f"\n🎯 Final model location: {final_model_path}")
+
 else:
     # Save model without training (for testing quantization)
     print("\nSkipping training, saving base model for testing...")
@@ -844,3 +1118,18 @@ else:
     print("  - config.json") 
     print("  - training_metadata.json")
     print("  - tokenizer files")
+
+    # === POST-TRAINING QUANTIZATION ===
+    # Apply post-training quantization if needed
+    final_model_path = output_dir
+    quantized_path = perform_post_training_quantization(
+        src_model_path=Path(output_dir),
+        quant_method=quant_method,
+        quant_spec=quant_spec
+    )
+    
+    if quantized_path:
+        final_model_path = quantized_path
+        print(f"\n🎯 Final model location: {final_model_path}")
+    else:
+        print(f"\n🎯 Final model location: {final_model_path}")
