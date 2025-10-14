@@ -223,6 +223,7 @@ def load_model_with_quant(model_name: str, quant: QuantContext, kv_cache_dtype: 
         load_kwargs["kv_cache_dtype"] = kv_cache_dtype
 
     method = quant.method
+    tokenizer_path = model_name  # Default tokenizer path
     if method is QuantMethod.QLORA:
         # QLoRA models already have quantization config saved, so just load normally
         # Remove torch_dtype as BitsAndBytes handles it
@@ -318,11 +319,65 @@ def load_model_with_quant(model_name: str, quant: QuantContext, kv_cache_dtype: 
                 else:
                     raise
     elif method is QuantMethod.QUA_ROT:
-        raise RuntimeError(
-            f"{method.value} weights require runtime hooks. "
-            "Run `python tools/quantize.py run --method "
-            f"{method.value.lower()}` to materialise the quantised artefacts first."
-        )
+        # QuaRot models require runtime hooks from the quantized output directory
+        from pathlib import Path
+        
+        # Look for a quantized version of this model
+        model_path = Path(model_name)
+        possible_quantized_paths = [
+            model_path.with_name(model_path.name + "_quantized"),
+            model_path.parent / (model_path.name + "_quantized"),
+        ]
+        
+        quantized_path = None
+        for path in possible_quantized_paths:
+            if path.exists() and (path / "quarot_config.json").exists():
+                quantized_path = path
+                break
+        
+        if quantized_path is None:
+            raise RuntimeError(
+                f"Failed to load QuaRot model from '{model_name}'. "
+                "Ensure `python tools/quantize.py run --method quarot` was executed successfully. "
+                f"Error details: QuaRot runtime hooks not found at {possible_quantized_paths[0]}\\quarot_runtime.py. "
+                f"Run `python tools/quantize.py run --method quarot --src {model_name} --dst {possible_quantized_paths[0]} --calib Datasets/calibration_openmath_5samples.txt` first."
+            )
+        
+        # Load the quantized model with runtime hooks
+        try:
+            # Import and apply QuaRot runtime hooks
+            import importlib.util
+            runtime_path = quantized_path / "quarot_runtime.py"
+            
+            if not runtime_path.exists():
+                raise FileNotFoundError(f"QuaRot runtime module not found: {runtime_path}")
+            
+            # Load runtime module
+            spec = importlib.util.spec_from_file_location("quarot_runtime", runtime_path)
+            runtime = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(runtime)
+            
+            # Load model normally first
+            try:
+                model = AutoModelForCausalLM.from_pretrained(str(quantized_path), **load_kwargs)
+            except TypeError as e:
+                if "kv_cache_dtype" in str(e) and "kv_cache_dtype" in load_kwargs:
+                    # Remove kv_cache_dtype and try again
+                    load_kwargs_fallback = {k: v for k, v in load_kwargs.items() if k != "kv_cache_dtype"}
+                    model = AutoModelForCausalLM.from_pretrained(str(quantized_path), **load_kwargs_fallback)
+                else:
+                    raise
+            
+            # Apply QuaRot hooks
+            model = runtime.load_quarot_model(str(quantized_path), model)
+            tokenizer_path = str(quantized_path)  # Use quantized path for tokenizer
+            print(f"[QuaRot] Loaded quantized model with runtime hooks from {quantized_path}")
+            
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to load QuaRot model from '{quantized_path}'. "
+                f"Error details: {e}"
+            ) from e
     else:
         # Try loading with kv_cache_dtype first, fall back without it if not supported
         try:
@@ -335,7 +390,7 @@ def load_model_with_quant(model_name: str, quant: QuantContext, kv_cache_dtype: 
             else:
                 raise
 
-    tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_path, trust_remote_code=True)
     return model, tokenizer
 
 

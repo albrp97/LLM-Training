@@ -298,6 +298,14 @@ def resolve_quantization_spec(method: QuantMethod) -> QuantizationSpec:
                 "attention_bits": 6,  # W6 for attention layers
                 "mlp_bits": PTQ_TARGET_WEIGHTS_BITS,  # W4 for MLP layers
             })
+        elif method == QuantMethod.QUA_ROT:
+            # QuaRot uses rotation matrices for W4A4 or W4A8 quantization
+            extras.update({
+                "rotation_method": "pca",  # PCA-based rotation matrix computation
+                "requires_calibration": True,  # QuaRot needs calibration data for rotations
+                "supports_w4a4": True,
+                "supports_w4a8": True,
+            })
         elif method == QuantMethod.SMOOTH_QUANT:
             # SmoothQuant uses W8A8 quantization with activation-aware scaling
             extras.update({

@@ -179,6 +179,11 @@ class QuantizationSpec:
             alpha = self.extras.get("alpha")
             if alpha and alpha != 0.5:  # Only include non-default alpha
                 extras[f"alpha{alpha}"] = True
+        elif self.method == QuantMethod.QUA_ROT and self.extras:
+            # QuaRot includes activation and KV quantization bits in tag
+            rotation_method = self.extras.get("rotation_method", "pca")
+            if rotation_method != "pca":  # Only include non-default rotation method
+                extras[f"rot{rotation_method}"] = True
 
         return tag_quant(
             self.method,
