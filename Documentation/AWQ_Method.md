@@ -28,6 +28,90 @@ AWQ is fully implemented and integrated into our training pipeline. The implemen
 - **✅ Training Integration**: [`Fine-tuning/01_Train.py`](../Fine-tuning/01_Train.py) - PTQ configuration and calibration
 - **✅ Evaluation Support**: [`Testing/02_TestModels.py`](../Testing/02_TestModels.py) - Automatic AWQ detection and loading
 
+## CLI Usage and Configuration
+
+### Basic Usage
+```bash
+python tools/quantize.py run --method awq \
+  --src Models/your-model \
+  --dst Models/your-model-awq \
+  --bits 4 --group-size 128
+```
+
+### Complete Command Reference
+```bash
+python tools/quantize.py run --method awq \
+  --src PATH_TO_SOURCE_MODEL \              # Required: Path to FP16/BF16 model
+  --dst PATH_TO_OUTPUT \                    # Required: Output directory  
+  --calib PATH_TO_CALIBRATION_FILE \        # Optional: Calibration data (default: Datasets/calibration_openmath_5samples.txt)
+  --bits 4 \                               # Optional: Weight bits (4 or 8, default: 4)
+  --group-size 128 \                       # Optional: Quantization group size (32, 64, 128, default: 128)
+  --keep-lm-head-fp16 \                    # Optional: Keep LM head in FP16 (recommended for AWQ)
+  --seed 13                                # Optional: Random seed for reproducibility (default: 13)
+```
+
+### Configuration Examples
+
+#### Standard AWQ (Recommended)
+```bash
+python tools/quantize.py run --method awq \
+  --src Models/Qwen3-0.6B-openmath_SFT_NoPeft_NoQuant \
+  --dst Models/Qwen3-0.6B-openmath_SFT_NoPeft_AWQ_w4_g128_headfp16 \
+  --bits 4 --group-size 128 --keep-lm-head-fp16
+```
+
+#### Fine-Grained AWQ (Better Accuracy)
+```bash
+python tools/quantize.py run --method awq \
+  --src Models/your-model \
+  --dst Models/your-model-awq-fine \
+  --bits 4 --group-size 64 --keep-lm-head-fp16
+```
+
+#### High-Accuracy AWQ (Minimal Compression Loss)
+```bash
+python tools/quantize.py run --method awq \
+  --src Models/your-model \
+  --dst Models/your-model-awq-precise \
+  --bits 4 --group-size 32 --keep-lm-head-fp16
+```
+
+#### Conservative 8-bit AWQ
+```bash
+python tools/quantize.py run --method awq \
+  --src Models/your-model \
+  --dst Models/your-model-awq-8bit \
+  --bits 8 --group-size 128 --keep-lm-head-fp16
+```
+
+#### Custom Calibration for Domain-Specific Models
+```bash
+python tools/quantize.py run --method awq \
+  --src Models/your-model \
+  --dst Models/your-model-awq \
+  --calib Datasets/domain_specific_calibration.txt \
+  --bits 4 --group-size 128
+```
+
+### Parameter Details
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `--method` | str | Required | Must be "awq" |
+| `--src` | Path | Required | Source model directory (FP16/BF16) |
+| `--dst` | Path | Required | Output directory for quantized model |
+| `--calib` | Path | `Datasets/calibration_openmath_5samples.txt` | Calibration prompts file |
+| `--bits` | int | 4 | Weight quantization bits (4, 8) |
+| `--group-size` | int | 128 | Quantization group size (32, 64, 128) |
+| `--keep-lm-head-fp16` | flag | False | Keep language model head in FP16 |
+| `--seed` | int | 13 | Random seed for reproducibility |
+
+### AWQ-Specific Considerations
+- **Group Size**: AWQ typically works best with group_size=128 (default)
+- **Calibration**: More sensitive to calibration data quality than GPTQ
+- **Activation Analysis**: Automatically computes activation statistics during quantization
+- **Weight Protection**: Preserves salient weights based on activation patterns
+
 ### Implemented Architecture
 
 #### Core AWQ Function

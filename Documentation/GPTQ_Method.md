@@ -45,6 +45,86 @@ def quantize_with_gptq(src, dst, calib_path, bits=4, group_size=64, keep_lm_head
 
 **Status**: ✅ **FULLY IMPLEMENTED** - Production ready with AutoGPTQ integration and fallback
 
+## CLI Usage and Configuration
+
+### Basic Usage
+```bash
+python tools/quantize.py run --method gptq \
+  --src Models/your-model \
+  --dst Models/your-model-gptq \
+  --bits 4 --group-size 64
+```
+
+### Complete Command Reference
+```bash
+python tools/quantize.py run --method gptq \
+  --src PATH_TO_SOURCE_MODEL \              # Required: Path to FP16/BF16 model
+  --dst PATH_TO_OUTPUT \                    # Required: Output directory  
+  --calib PATH_TO_CALIBRATION_FILE \        # Optional: Calibration data (default: Datasets/calibration_openmath_5samples.txt)
+  --bits 4 \                               # Optional: Weight bits (4 or 8, default: 4)
+  --group-size 64 \                        # Optional: Quantization group size (32, 64, 128, -1 for per-channel, default: 64)
+  --keep-lm-head-fp16 \                    # Optional: Keep LM head in FP16 (recommended)
+  --seed 13                                # Optional: Random seed for reproducibility (default: 13)
+```
+
+### Configuration Examples
+
+#### Standard 4-bit Quantization (Recommended)
+```bash
+python tools/quantize.py run --method gptq \
+  --src Models/Qwen3-0.6B-openmath_SFT_NoPeft_NoQuant \
+  --dst Models/Qwen3-0.6B-openmath_SFT_NoPeft_GPTQ_w4_g64_headfp16 \
+  --bits 4 --group-size 64 --keep-lm-head-fp16
+```
+
+#### Per-Channel Quantization (Maximum Accuracy)
+```bash
+python tools/quantize.py run --method gptq \
+  --src Models/your-model \
+  --dst Models/your-model-gptq-perchannel \
+  --bits 4 --group-size -1 --keep-lm-head-fp16
+```
+
+#### Fine-Grained Quantization (Better Accuracy, More Memory)
+```bash
+python tools/quantize.py run --method gptq \
+  --src Models/your-model \
+  --dst Models/your-model-gptq-fine \
+  --bits 4 --group-size 32 --keep-lm-head-fp16
+```
+
+#### 8-bit Quantization (Conservative)
+```bash
+python tools/quantize.py run --method gptq \
+  --src Models/your-model \
+  --dst Models/your-model-gptq-8bit \
+  --bits 8 --group-size 64 --keep-lm-head-fp16
+```
+
+#### Custom Calibration Data
+```bash
+python tools/quantize.py run --method gptq \
+  --src Models/your-model \
+  --dst Models/your-model-gptq \
+  --calib Datasets/your_custom_calibration.txt \
+  --bits 4 --group-size 64
+```
+
+### Parameter Details
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `--method` | str | Required | Must be "gptq" |
+| `--src` | Path | Required | Source model directory (FP16/BF16) |
+| `--dst` | Path | Required | Output directory for quantized model |
+| `--calib` | Path | `Datasets/calibration_openmath_5samples.txt` | Calibration prompts file |
+| `--bits` | int | 4 | Weight quantization bits (4, 8) |
+| `--group-size` | int | 64 | Quantization group size (32, 64, 128, -1) |
+| `--keep-lm-head-fp16` | flag | False | Keep language model head in FP16 |
+| `--seed` | int | 13 | Random seed for reproducibility |
+
+**Note**: GPTQ only quantizes weights. Activations remain in FP16. For activation quantization, consider SmoothQuant or QuaRot.
+
 ### Implementation Architecture
 
 #### AutoGPTQ Integration ✅ **COMPLETED**

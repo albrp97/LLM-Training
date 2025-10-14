@@ -19,19 +19,86 @@ HQQ's key innovation lies in its calibration-free approach using half-quadratic 
 
 ## Implementation Status in Our Codebase
 
-### Current Status: **✅ FULLY IMPLEMENTED**
+### Current Status: **❌ PLACEHOLDER IMPLEMENTATION**
 
-HQQ is fully implemented and integrated into our training pipeline. The implementation provides calibration-free weight quantization with comprehensive integration across the training, quantization, and evaluation workflows.
+**Note**: While the documentation indicates full implementation, HQQ currently has only placeholder support in the codebase. The method is available in the CLI interface but requires full implementation.
 
-### Implementation Files
+### Implementation Status
 - **✅ Configuration Support**: [`quantization_utils.py`](../quantization_utils.py) - HQQ enum and metadata handling
-- **✅ Core Implementation**: [`tools/quantize.py`](../tools/quantize.py) - `quantize_with_hqq()` function
-- **✅ Training Integration**: [`Fine-tuning/01_Train.py`](../Fine-tuning/01_Train.py) - PTQ configuration
-- **✅ Evaluation Support**: [`Testing/02_TestModels.py`](../Testing/02_TestModels.py) - Automatic HQQ detection and loading
+- **❌ Core Implementation**: [`tools/quantize.py`](../tools/quantize.py) - `quantize_with_hqq()` function needs implementation
+- **✅ Training Integration**: [`Fine-tuning/01_Train.py`](../Fine-tuning/01_Train.py) - PTQ configuration ready
+- **✅ Evaluation Support**: [`Testing/02_TestModels.py`](../Testing/02_TestModels.py) - Automatic HQQ detection prepared
 
-### Implemented Architecture
+## CLI Usage and Configuration (When Implemented)
 
-#### Core HQQ Function
+### Basic Usage
+```bash
+python tools/quantize.py run --method hqq \
+  --src Models/your-model \
+  --dst Models/your-model-hqq \
+  --bits 4 --group-size 64
+```
+
+### Complete Command Reference
+```bash
+python tools/quantize.py run --method hqq \
+  --src PATH_TO_SOURCE_MODEL \              # Required: Path to FP16/BF16 model
+  --dst PATH_TO_OUTPUT \                    # Required: Output directory  
+  --bits 4 \                               # Optional: Weight bits (4 or 8, default: 4)
+  --group-size 64 \                        # Optional: Quantization group size (32, 64, 128, default: 64)
+  --keep-lm-head-fp16 \                    # Optional: Keep LM head in FP16 (recommended)
+  --seed 13                                # Optional: Random seed for reproducibility (default: 13)
+```
+
+**Note**: HQQ does not use `--calib` parameter since it's calibration-free.
+
+### Configuration Examples (Planned)
+
+#### Standard HQQ (When Available)
+```bash
+python tools/quantize.py run --method hqq \
+  --src Models/Qwen3-0.6B-openmath_SFT_NoPeft_NoQuant \
+  --dst Models/Qwen3-0.6B-openmath_SFT_NoPeft_HQQ_w4_g64_headfp16 \
+  --bits 4 --group-size 64 --keep-lm-head-fp16
+```
+
+#### Fine-Grained HQQ (Better Accuracy)
+```bash
+python tools/quantize.py run --method hqq \
+  --src Models/your-model \
+  --dst Models/your-model-hqq-fine \
+  --bits 4 --group-size 32 --keep-lm-head-fp16
+```
+
+#### Conservative 8-bit HQQ
+```bash
+python tools/quantize.py run --method hqq \
+  --src Models/your-model \
+  --dst Models/your-model-hqq-8bit \
+  --bits 8 --group-size 64 --keep-lm-head-fp16
+```
+
+### Parameter Details
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `--method` | str | Required | Must be "hqq" |
+| `--src` | Path | Required | Source model directory (FP16/BF16) |
+| `--dst` | Path | Required | Output directory for quantized model |
+| `--bits` | int | 4 | Weight quantization bits (4, 8) |
+| `--group-size` | int | 64 | Quantization group size (32, 64, 128) |
+| `--keep-lm-head-fp16` | flag | False | Keep language model head in FP16 |
+| `--seed` | int | 13 | Random seed for reproducibility |
+
+### HQQ-Specific Considerations (Planned)
+- **Calibration-Free**: No calibration data required (fastest quantization)
+- **Half-Quadratic Optimization**: Uses iterative optimization for quantization parameters
+- **Zero Setup Time**: No data collection or preprocessing needed
+- **Rapid Deployment**: Ideal for quick model compression
+
+### Planned Architecture
+
+#### Core HQQ Function (To Be Implemented)
 ```python
 def quantize_with_hqq(
     src: Path, 
@@ -48,7 +115,7 @@ def quantize_with_hqq(
     Performs calibration-free weight quantization using HQQ algorithm that quantizes
     weights without requiring calibration data, using efficient half-quadratic optimization.
     """
-    # ✅ Fully implemented with HQQLinear layer replacement
+    # ❌ Needs implementation with HQQLinear layer replacement
 ```
 
 ## HQQ Algorithm Implementation

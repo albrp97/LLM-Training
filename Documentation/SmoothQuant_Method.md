@@ -28,6 +28,74 @@ SmoothQuant is fully implemented and integrated into our training pipeline. The 
 - **✅ Training Integration**: [`Fine-tuning/01_Train.py`](../Fine-tuning/01_Train.py) - W8A8 configuration and calibration
 - **✅ Evaluation Support**: [`Testing/02_TestModels.py`](../Testing/02_TestModels.py) - Automatic SmoothQuant detection and loading
 
+## CLI Usage and Configuration
+
+### Basic Usage
+```bash
+python tools/quantize.py run --method smoothquant \
+  --src Models/your-model \
+  --dst Models/your-model-smoothquant \
+  --bits 8 --acts-bits 8
+```
+
+### Complete Command Reference
+```bash
+python tools/quantize.py run --method smoothquant \
+  --src PATH_TO_SOURCE_MODEL \              # Required: Path to FP16/BF16 model
+  --dst PATH_TO_OUTPUT \                    # Required: Output directory  
+  --calib PATH_TO_CALIBRATION_FILE \        # Optional: Calibration data (default: Datasets/calibration_openmath_5samples.txt)
+  --bits 8 \                               # Optional: Weight bits (8 recommended for SmoothQuant, default: 8)
+  --acts-bits 8 \                          # Optional: Activation bits (8 recommended, default: 8)
+  --seed 13                                # Optional: Random seed for reproducibility (default: 13)
+```
+
+### Configuration Examples
+
+#### Standard W8A8 SmoothQuant (Recommended)
+```bash
+python tools/quantize.py run --method smoothquant \
+  --src Models/Qwen3-0.6B-openmath_SFT_NoPeft_NoQuant \
+  --dst Models/Qwen3-0.6B-openmath_SFT_NoPeft_SmoothQuant_w8_a8 \
+  --bits 8 --acts-bits 8
+```
+
+#### Custom Calibration for Domain-Specific Models
+```bash
+python tools/quantize.py run --method smoothquant \
+  --src Models/your-model \
+  --dst Models/your-model-smoothquant \
+  --calib Datasets/domain_specific_calibration.txt \
+  --bits 8 --acts-bits 8
+```
+
+#### Conservative W8A16 (Weights only)
+```bash
+# Note: This defeats the purpose of SmoothQuant but can be useful for comparison
+python tools/quantize.py run --method smoothquant \
+  --src Models/your-model \
+  --dst Models/your-model-smoothquant-w8a16 \
+  --bits 8 --acts-bits 16
+```
+
+### Parameter Details
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `--method` | str | Required | Must be "smoothquant" |
+| `--src` | Path | Required | Source model directory (FP16/BF16) |
+| `--dst` | Path | Required | Output directory for quantized model |
+| `--calib` | Path | `Datasets/calibration_openmath_5samples.txt` | Calibration prompts file |
+| `--bits` | int | 8 | Weight quantization bits (8 recommended for SmoothQuant) |
+| `--acts-bits` | int | 8 | Activation quantization bits (8 for W8A8) |
+| `--seed` | int | 13 | Random seed for reproducibility |
+
+### SmoothQuant-Specific Considerations
+- **W8A8 Focus**: SmoothQuant is specifically designed for 8-bit weights and activations
+- **Calibration Critical**: Quality calibration data is essential for computing scaling factors
+- **Activation Analysis**: Automatically computes per-channel activation statistics
+- **Outlier Mitigation**: Smooths activation outliers by transferring difficulty to weights
+- **Memory Efficiency**: Achieves ~50% VRAM reduction compared to FP16
+
 ### Implemented Architecture
 
 #### Core SmoothQuant Function

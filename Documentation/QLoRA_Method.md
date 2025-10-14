@@ -36,6 +36,87 @@ quantized_constants = quantize_fp8(quantization_constants)
 - **Quantization Logic**: [`quantization_utils.py`](../quantization_utils.py) - BitsAndBytes config
 - **Model Preparation**: Uses `prepare_model_for_kbit_training()`
 
+## Configuration and Usage
+
+### Note: Training-Time Quantization (No CLI)
+QLoRA does not use the `tools/quantize.py` CLI interface since it applies quantization during training, not as a post-training step. Configuration is done directly in the training script.
+
+### Training Script Configuration
+```python
+# In Fine-tuning/01_Train.py
+QUANT_METHOD = "QLORA"          # Enable QLoRA quantization
+PEFT_CONFIG = "LoRa"            # Auto-overridden to LoRa for QLoRA
+lora_r = 256                    # LoRA rank (adapter size)
+merge_after_train = True        # Merge adapters after training
+```
+
+### QLoRA-Specific Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `QUANT_METHOD` | str | Required | Must be "QLORA" |
+| `PEFT_CONFIG` | str | Auto-set | Automatically set to "LoRa" |
+| `lora_r` | int | 256 | LoRA rank (higher = more parameters, better quality) |
+| `merge_after_train` | bool | True | Merge adapters into base model after training |
+| `keep_lm_head_fp16` | bool | False | QLoRA typically quantizes LM head too |
+
+### Configuration Examples
+
+#### Standard QLoRA (Recommended)
+```python
+# Fine-tuning/01_Train.py configuration
+DATASET_CHOICE = "openmath"
+QUANT_METHOD = "QLORA"
+PEFT_CONFIG = "LoRa"       # Auto-overridden
+lora_r = 256              # Good balance of quality and efficiency
+merge_after_train = True   # Create merged model for inference
+```
+
+#### High-Quality QLoRA (More Parameters)
+```python
+DATASET_CHOICE = "openmath"
+QUANT_METHOD = "QLORA"
+PEFT_CONFIG = "LoRa"
+lora_r = 512              # Higher rank = better quality, more memory
+merge_after_train = True
+```
+
+#### Efficient QLoRA (Lower Memory)
+```python
+DATASET_CHOICE = "openmath"
+QUANT_METHOD = "QLORA"
+PEFT_CONFIG = "LoRa"
+lora_r = 128              # Lower rank = less memory, faster training
+merge_after_train = True
+```
+
+#### Research QLoRA (Keep Adapters Separate)
+```python
+DATASET_CHOICE = "openmath"
+QUANT_METHOD = "QLORA"
+PEFT_CONFIG = "LoRa"
+lora_r = 256
+merge_after_train = False  # Keep adapters separate for analysis
+```
+
+### Memory Requirements
+| Base Model | FP16 | QLoRA (4-bit) | Memory Reduction |
+|------------|------|---------------|------------------|
+| 0.5B | ~2GB | ~0.8GB | 60% |
+| 1B | ~4GB | ~1.6GB | 60% |
+| 3B | ~12GB | ~4.8GB | 60% |
+| 7B | ~28GB | ~11.2GB | 60% |
+
+### Model Output Naming
+QLoRA creates models with specific naming patterns:
+```
+{base_model}-{dataset}_SFT_{peft}_QLORA_w4_headbf16/
+```
+
+**Examples**:
+- `Qwen3-0.6B-openmath_SFT_LoRa256_QLORA_w4_headbf16`
+- `Qwen3-0.6B-squad_SFT_LoRa512_QLORA_w4_headbf16`
+
 ### Usage Pattern
 
 #### Training Configuration

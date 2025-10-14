@@ -35,6 +35,96 @@ BRECQ addresses quantization challenges through **block-wise reconstruction** wi
 - **Integration**: [`Fine-tuning/01_Train.py`](../Fine-tuning/01_Train.py) - Mixed precision configuration
 - **Utilities**: [`quantization_utils.py`](../quantization_utils.py) - BRECQ-specific tagging
 
+## CLI Usage and Configuration
+
+### Basic Usage
+```bash
+python tools/quantize.py run --method brecq \
+  --src Models/your-model \
+  --dst Models/your-model-brecq \
+  --bits 4 --group-size 64
+```
+
+### Complete Command Reference
+```bash
+python tools/quantize.py run --method brecq \
+  --src PATH_TO_SOURCE_MODEL \              # Required: Path to FP16/BF16 model
+  --dst PATH_TO_OUTPUT \                    # Required: Output directory  
+  --calib PATH_TO_CALIBRATION_FILE \        # Optional: Calibration data (default: Datasets/calibration_openmath_5samples.txt)
+  --bits 4 \                               # Optional: MLP layer bits (4 or 6, default: 4)
+  --group-size 64 \                        # Optional: Block size (32, 64, 128, default: 64)
+  --keep-lm-head-fp16 \                    # Optional: Keep LM head in FP16 (recommended)
+  --seed 13                                # Optional: Random seed for reproducibility (default: 13)
+```
+
+### Configuration Examples
+
+#### Standard Mixed Precision BRECQ (Recommended)
+```bash
+python tools/quantize.py run --method brecq \
+  --src Models/Qwen3-0.6B-openmath_SFT_NoPeft_NoQuant \
+  --dst Models/Qwen3-0.6B-openmath_SFT_NoPeft_BRECQ_w6_w4_g64_headfp16 \
+  --bits 4 --group-size 64 --keep-lm-head-fp16
+```
+**Result**: Attention layers → W6, MLP layers → W4, LM head → FP16
+
+#### Conservative Mixed Precision
+```bash
+python tools/quantize.py run --method brecq \
+  --src Models/your-model \
+  --dst Models/your-model-brecq-conservative \
+  --bits 6 --group-size 64 --keep-lm-head-fp16
+```
+**Result**: Attention layers → W6, MLP layers → W6, LM head → FP16
+
+#### Fine-Grained Blocks (Better Accuracy)
+```bash
+python tools/quantize.py run --method brecq \
+  --src Models/your-model \
+  --dst Models/your-model-brecq-fine \
+  --bits 4 --group-size 32 --keep-lm-head-fp16
+```
+**Result**: Smaller blocks = more precise reconstruction
+
+#### Uniform 4-bit (Maximum Compression)
+```bash
+python tools/quantize.py run --method brecq \
+  --src Models/your-model \
+  --dst Models/your-model-brecq-aggressive \
+  --bits 4 --group-size 128
+```
+**Result**: All layers → W4 (overrides mixed precision)
+
+### Parameter Details
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `--method` | str | Required | Must be "brecq" |
+| `--src` | Path | Required | Source model directory (FP16/BF16) |
+| `--dst` | Path | Required | Output directory for quantized model |
+| `--calib` | Path | `Datasets/calibration_openmath_5samples.txt` | Calibration prompts file |
+| `--bits` | int | 4 | MLP layer quantization bits (4, 6) |
+| `--group-size` | int | 64 | Block size for reconstruction (32, 64, 128) |
+| `--keep-lm-head-fp16` | flag | False | Keep language model head in FP16 |
+| `--seed` | int | 13 | Random seed for reproducibility |
+
+### BRECQ-Specific Considerations
+
+#### Mixed Precision Strategy
+```
+Layer Type                   | Default Precision | Rationale
+----------------------------|------------------|------------------
+Attention (q,k,v,o_proj)    | W6              | Critical for attention patterns
+MLP (gate,up,down_proj)     | W4              | More compression-tolerant  
+LM Head                     | FP16            | Output stability
+Other Linear               | Follow --bits    | User-configurable
+```
+
+#### Block-wise Reconstruction
+- **Block Size**: Smaller blocks (32) = better accuracy, larger blocks (128) = faster quantization
+- **Iterative Refinement**: Multiple passes to minimize reconstruction error
+- **Error Tracking**: Monitors per-block quantization error for quality control
+
 ### Usage Patterns
 
 #### 1. Automatic via Training Script

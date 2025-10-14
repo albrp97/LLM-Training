@@ -26,6 +26,35 @@
 - **Specification**: [`quantization_utils.py`](../quantization_utils.py) - NoQuant enum and metadata
 - **Detection**: [`Testing/02_TestModels.py`](../Testing/02_TestModels.py) - Evaluation handling
 
+## CLI Usage and Configuration
+
+### Note: No CLI Interface Required
+NoQuant does not require the `tools/quantize.py` CLI since no post-training quantization is performed. Models remain in their original FP16/BF16 precision.
+
+### Training Script Configuration
+```python
+# In Fine-tuning/01_Train.py
+QUANT_METHOD = "NoQuant"  # Default setting for baseline models
+
+# This creates models with naming like:
+# Qwen3-0.6B-openmath_SFT_NoPeft_NoQuant
+# Qwen3-0.6B-openmath_SFT_LoRa256_NoQuant
+```
+
+### Model Creation Process
+1. **Training**: Models are trained in standard FP16/BF16 precision
+2. **Saving**: Models are saved in original precision format
+3. **Loading**: Standard HuggingFace loading (no special quantization handling)
+4. **Evaluation**: Direct inference without quantization considerations
+
+### Memory Requirements
+| Model Size | FP16 VRAM | BF16 VRAM | Notes |
+|------------|-----------|-----------|-------|
+| 0.5B | ~2GB | ~2GB | Small models |
+| 1B | ~4GB | ~4GB | Medium models |
+| 3B | ~12GB | ~12GB | Large models |
+| 7B | ~28GB | ~28GB | Very large models |
+
 ### Usage Pattern
 
 #### Training Configuration

@@ -26,6 +26,81 @@ AdaRound addresses the key challenge in weight quantization: **rounding decision
 - **Integration**: [`Fine-tuning/01_Train.py`](../Fine-tuning/01_Train.py) - Auto-calibration generation
 - **Utilities**: [`quantization_utils.py`](../quantization_utils.py) - Method enum and tagging
 
+## CLI Usage and Configuration
+
+### Basic Usage
+```bash
+python tools/quantize.py run --method adaround \
+  --src Models/your-model \
+  --dst Models/your-model-adaround \
+  --bits 4 --group-size 128
+```
+
+### Complete Command Reference
+```bash
+python tools/quantize.py run --method adaround \
+  --src PATH_TO_SOURCE_MODEL \              # Required: Path to FP16/BF16 model
+  --dst PATH_TO_OUTPUT \                    # Required: Output directory  
+  --calib PATH_TO_CALIBRATION_FILE \        # Optional: Calibration data (default: Datasets/calibration_openmath_5samples.txt)
+  --bits 4 \                               # Optional: Weight bits (4 or 8, default: 4)
+  --group-size 128 \                       # Optional: Quantization group size (32, 64, 128, default: 128)
+  --keep-lm-head-fp16 \                    # Optional: Keep LM head in FP16 (recommended)
+  --seed 13                                # Optional: Random seed for reproducibility (default: 13)
+```
+
+### Configuration Examples
+
+#### Standard AdaRound (Recommended)
+```bash
+python tools/quantize.py run --method adaround \
+  --src Models/Qwen3-0.6B-openmath_SFT_NoPeft_NoQuant \
+  --dst Models/Qwen3-0.6B-openmath_SFT_NoPeft_AdaRound_w4_g128_headfp16 \
+  --bits 4 --group-size 128 --keep-lm-head-fp16
+```
+
+#### Fine-Grained AdaRound (Better Accuracy)
+```bash
+python tools/quantize.py run --method adaround \
+  --src Models/your-model \
+  --dst Models/your-model-adaround-fine \
+  --bits 4 --group-size 64 --keep-lm-head-fp16
+```
+
+#### Ultra-Fine Grained (Maximum Accuracy)
+```bash
+python tools/quantize.py run --method adaround \
+  --src Models/your-model \
+  --dst Models/your-model-adaround-ultrafine \
+  --bits 4 --group-size 32 --keep-lm-head-fp16
+```
+
+#### Conservative 8-bit AdaRound
+```bash
+python tools/quantize.py run --method adaround \
+  --src Models/your-model \
+  --dst Models/your-model-adaround-8bit \
+  --bits 8 --group-size 128 --keep-lm-head-fp16
+```
+
+### Parameter Details
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `--method` | str | Required | Must be "adaround" |
+| `--src` | Path | Required | Source model directory (FP16/BF16) |
+| `--dst` | Path | Required | Output directory for quantized model |
+| `--calib` | Path | `Datasets/calibration_openmath_5samples.txt` | Calibration prompts file |
+| `--bits` | int | 4 | Weight quantization bits (4, 8) |
+| `--group-size` | int | 128 | Quantization group size (32, 64, 128) |
+| `--keep-lm-head-fp16` | flag | False | Keep language model head in FP16 |
+| `--seed` | int | 13 | Random seed for reproducibility |
+
+### AdaRound-Specific Considerations
+- **Adaptive Rounding**: Chooses optimal rounding direction per weight group
+- **Reconstruction Focus**: Minimizes layer-wise reconstruction error
+- **Group Size Impact**: Smaller groups = better accuracy but more computation
+- **Calibration Dependency**: Quality of calibration data affects rounding decisions
+
 ### Usage Patterns
 
 #### 1. Automatic via Training Script
