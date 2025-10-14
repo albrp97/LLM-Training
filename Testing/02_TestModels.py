@@ -274,6 +274,49 @@ def load_model_with_quant(model_name: str, quant: QuantContext, kv_cache_dtype: 
                     "Ensure `tools/quantize.py run --method smoothquant` was executed successfully. "
                     f"Error details: {e}"
                 ) from e
+    elif method is QuantMethod.GPTQ:
+        # GPTQ models can be loaded with AutoGPTQ if available, otherwise fall back to standard loading
+        try:
+            from auto_gptq import AutoGPTQForCausalLM
+            # Try loading with AutoGPTQ first for optimal inference
+            try:
+                # Try without kv_cache_dtype first as AutoGPTQ may not support it
+                gptq_kwargs = {
+                    "device_map": device_map,
+                    "trust_remote_code": True,
+                    "use_safetensors": True,
+                    "inject_fused_attention": False,  # Disable for compatibility
+                    "inject_fused_mlp": False,        # Disable for compatibility
+                    "use_cuda_fp16": torch.cuda.is_available(),
+                    "disable_exllama": True,          # Use default kernels
+                    "disable_exllamav2": True,        # Use default kernels
+                }
+                model = AutoGPTQForCausalLM.from_quantized(model_name, **gptq_kwargs)
+                print("[GPTQ] Loaded model using AutoGPTQ optimized loader")
+            except Exception as e:
+                print(f"[GPTQ] AutoGPTQ loader failed ({e}), falling back to standard loading")
+                # Fall back to standard loading
+                try:
+                    model = AutoModelForCausalLM.from_pretrained(model_name, **load_kwargs)
+                except TypeError as e:
+                    if "kv_cache_dtype" in str(e) and "kv_cache_dtype" in load_kwargs:
+                        # Remove kv_cache_dtype and try again
+                        load_kwargs_fallback = {k: v for k, v in load_kwargs.items() if k != "kv_cache_dtype"}
+                        model = AutoModelForCausalLM.from_pretrained(model_name, **load_kwargs_fallback)
+                    else:
+                        raise
+        except ImportError:
+            print("[GPTQ] AutoGPTQ not available, using standard model loading")
+            # AutoGPTQ not available, use standard loading
+            try:
+                model = AutoModelForCausalLM.from_pretrained(model_name, **load_kwargs)
+            except TypeError as e:
+                if "kv_cache_dtype" in str(e) and "kv_cache_dtype" in load_kwargs:
+                    # Remove kv_cache_dtype and try again
+                    load_kwargs_fallback = {k: v for k, v in load_kwargs.items() if k != "kv_cache_dtype"}
+                    model = AutoModelForCausalLM.from_pretrained(model_name, **load_kwargs_fallback)
+                else:
+                    raise
     elif method is QuantMethod.QUA_ROT:
         raise RuntimeError(
             f"{method.value} weights require runtime hooks. "

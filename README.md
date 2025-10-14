@@ -11,8 +11,12 @@ An investigation repository for exploring Large Language Model fine-tuning, eval
 - **NoPeft**: Full fine-tuning baseline
 
 ### Quantization Methods
-- **QLoRA**: 4-bit quantization with double quantization
-- **AWQ/GPTQ**: Advanced quantization techniques (implementation placeholders)
+- **QLoRA**: 4-bit quantization with double quantization for training-time efficiency
+- **GPTQ**: Hessian-based post-training quantization for optimal inference (✅ implemented)
+- **AWQ**: Activation-aware weight quantization (✅ implemented)
+- **SmoothQuant**: W8A8 quantization with activation smoothing (✅ implemented)
+- **HQQ**: Half-quadratic quantization (calibration-free) (✅ implemented)
+- **AdaRound/BRECQ**: Advanced rounding methods (✅ implemented)
 
 ### Training Methodology
 - **SFT (Supervised Fine-Tuning)**: Structured training with chat templates
@@ -132,4 +136,19 @@ uv run python Fine-tuning/1_Train.py
 ```bash
 # Automatically evaluate all untrained models
 uv run python Testing/04_EvaluationOrchestrator.py
+```
+
+### 4. Post-Training Quantization
+```bash
+# Quantize a trained model with GPTQ (4-bit, group size 64)
+uv run python tools/quantize.py run --method gptq \
+    --src Models/Qwen3-0.6B-openmath_SFT_LoRa256_NoQuant \
+    --dst Models/Qwen3-0.6B-openmath_SFT_LoRa256_GPTQ_w4_g64_headfp16 \
+    --calib Datasets/calibration_openmath_5samples.txt \
+    --bits 4 --group-size 64 --keep-lm-head-fp16
+
+# Other quantization methods
+uv run python tools/quantize.py run --method awq --src Models/your-model --dst Models/your-model-awq
+uv run python tools/quantize.py run --method smoothquant --src Models/your-model --dst Models/your-model-sq
+uv run python tools/quantize.py run --method hqq --src Models/your-model --dst Models/your-model-hqq
 ```

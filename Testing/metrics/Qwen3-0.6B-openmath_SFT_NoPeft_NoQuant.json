@@ -1,0 +1,239 @@
+{
+    "model_name": "Models\\Qwen3-0.6B-openmath_SFT_NoPeft_NoQuant",
+    "evaluated_at": "2025-10-14T09:27:36",
+    "summary": {
+        "num_datasets": 3,
+        "total_samples": 6,
+        "total_correct": 2,
+        "total_incorrect": 4,
+        "overall_accuracy": 33.33,
+        "latency_seconds": {
+            "per_prompt": [
+                0.5464,
+                0.2036,
+                0.2153,
+                16.9317,
+                0.2189,
+                0.2148
+            ],
+            "sum": 18.3308,
+            "mean": 3.0551,
+            "median": 0.2171,
+            "mode": 0.215,
+            "std": 6.7994
+        },
+        "tokens_generated": {
+            "per_prompt": [
+                5,
+                5,
+                6,
+                564,
+                6,
+                6
+            ],
+            "sum": 592,
+            "mean": 98.67,
+            "median": 6.0,
+            "mode": 6,
+            "std": 227.97
+        },
+        "quantization": {
+            "method": "NoQuant",
+            "weights_bits": 16,
+            "group_size": null,
+            "activations_bits": 16,
+            "kv_cache_dtype": "fp16",
+            "lm_head_dtype": "bf16",
+            "backend": "torch",
+            "calibration_size": null,
+            "calibration_hash": null
+        },
+        "peak_vram_reserved_gb": 1.311,
+        "peak_vram_allocated_gb": 1.22
+    },
+    "datasets": {
+        "test-ai2_arc.parquet": {
+            "type": "mcq4",
+            "total_samples": 2,
+            "format_success_rate": 100.0,
+            "correct": 2,
+            "incorrect": 0,
+            "accuracy": 100.0,
+            "metrics": {
+                "task": "ARC (4-way MCQ)",
+                "macro_f1": 0.5,
+                "per_class": {
+                    "A": {
+                        "precision": 1.0,
+                        "recall": 1.0,
+                        "f1": 1.0
+                    },
+                    "B": {
+                        "precision": 0.0,
+                        "recall": 0.0,
+                        "f1": 0.0
+                    },
+                    "C": {
+                        "precision": 1.0,
+                        "recall": 1.0,
+                        "f1": 1.0
+                    },
+                    "D": {
+                        "precision": 0.0,
+                        "recall": 0.0,
+                        "f1": 0.0
+                    }
+                },
+                "confusion_matrix": {
+                    "A": {
+                        "A": 1,
+                        "B": 0,
+                        "C": 0,
+                        "D": 0
+                    },
+                    "B": {
+                        "A": 0,
+                        "B": 0,
+                        "C": 0,
+                        "D": 0
+                    },
+                    "C": {
+                        "A": 0,
+                        "B": 0,
+                        "C": 1,
+                        "D": 0
+                    },
+                    "D": {
+                        "A": 0,
+                        "B": 0,
+                        "C": 0,
+                        "D": 0
+                    }
+                },
+                "support": 2
+            },
+            "latency_seconds": {
+                "per_prompt": [
+                    0.5464,
+                    0.2036
+                ],
+                "sum": 0.7501,
+                "mean": 0.375,
+                "median": 0.375,
+                "mode": 0.546,
+                "std": 0.2424
+            },
+            "tokens_generated": {
+                "per_prompt": [
+                    5,
+                    5
+                ],
+                "sum": 10,
+                "mean": 5.0,
+                "median": 5.0,
+                "mode": 5,
+                "std": 0.0
+            }
+        },
+        "test-OpenMathInstruct-2.parquet": {
+            "type": "math_numeric",
+            "total_samples": 2,
+            "format_success_rate": 100.0,
+            "correct": 0,
+            "incorrect": 2,
+            "accuracy": 0.0,
+            "metrics": {
+                "task": "OpenMathInstruct-2 (numeric)",
+                "avg_abs_diff": 486.5,
+                "support": 2
+            },
+            "latency_seconds": {
+                "per_prompt": [
+                    0.2153,
+                    16.9317
+                ],
+                "sum": 17.147,
+                "mean": 8.5735,
+                "median": 8.5735,
+                "mode": 0.215,
+                "std": 11.8203
+            },
+            "tokens_generated": {
+                "per_prompt": [
+                    6,
+                    564
+                ],
+                "sum": 570,
+                "mean": 285.0,
+                "median": 285.0,
+                "mode": 6,
+                "std": 394.57
+            }
+        },
+        "test-squad_v2.parquet": {
+            "type": "squad_v2",
+            "total_samples": 2,
+            "format_success_rate": 100.0,
+            "correct": 0,
+            "incorrect": 2,
+            "accuracy": 0.0,
+            "metrics": {
+                "task": "SQuAD v2",
+                "EM": 0.0,
+                "F1": 0.0,
+                "HasAns_EM": 0.0,
+                "HasAns_F1": 0.0,
+                "NoAns_Accuracy": 0.0,
+                "AvNA_Accuracy": 100.0,
+                "support": 2
+            },
+            "latency_seconds": {
+                "per_prompt": [
+                    0.2189,
+                    0.2148
+                ],
+                "sum": 0.4337,
+                "mean": 0.2169,
+                "median": 0.2169,
+                "mode": 0.219,
+                "std": 0.0029
+            },
+            "tokens_generated": {
+                "per_prompt": [
+                    6,
+                    6
+                ],
+                "sum": 12,
+                "mean": 6.0,
+                "median": 6.0,
+                "mode": 6,
+                "std": 0.0
+            }
+        }
+    },
+    "quantization": {
+        "method": "NoQuant",
+        "source": "training_metadata",
+        "weights_bits": 16,
+        "activations_bits": 16,
+        "kv_cache_bits": 16,
+        "group_size": null,
+        "lm_head_dtype": "bf16",
+        "backend": "torch",
+        "kv_cache_dtype": "fp16",
+        "calibration_size": null,
+        "calibration_hash": null,
+        "quant_tag": "NoQuant"
+    },
+    "hardware": {
+        "peak_vram_reserved_gb": 1.311,
+        "peak_vram_allocated_gb": 1.22,
+        "per_gpu": [
+            {
+                "gpu": 0,
+                "peak_allocated_gb": 1.22,
+                "peak_reserved_gb": 1.311
+            }
+        ]
+    }
+}
