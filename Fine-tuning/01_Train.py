@@ -89,6 +89,11 @@ PTQ_TARGET_GROUP_SIZE = 128  # Default group size for AWQ; HQQ uses 64
 PTQ_TARGET_ACTS_BITS = 8
 PTQ_TARGET_KV_BITS = 8
 
+# SmoothQuant-specific defaults (W8A8 quantization)
+SMOOTHQUANT_WEIGHTS_BITS = 8
+SMOOTHQUANT_ACTS_BITS = 8
+SMOOTHQUANT_ALPHA = 0.5  # Smoothing factor between activations and weights
+
 # Controls whether adapters are merged back into the base model on save.
 # For QLoRA, use the specific qlora config above instead
 MERGE_AFTER_TRAIN = True
@@ -286,13 +291,32 @@ def resolve_quantization_spec(method: QuantMethod) -> QuantizationSpec:
             "trained_activations_bits": 16,
         }
         
-        # Add BRECQ-specific mixed precision configuration
+        # Add method-specific configurations
         if method == QuantMethod.BRECQ:
             extras.update({
                 "mixed_precision": True,
                 "attention_bits": 6,  # W6 for attention layers
                 "mlp_bits": PTQ_TARGET_WEIGHTS_BITS,  # W4 for MLP layers
             })
+        elif method == QuantMethod.SMOOTH_QUANT:
+            # SmoothQuant uses W8A8 quantization with activation-aware scaling
+            extras.update({
+                "alpha": SMOOTHQUANT_ALPHA,  # Smoothing factor
+                "backend": "torch",  # Default to PyTorch backend
+            })
+            # Override default bits for SmoothQuant W8A8
+            return QuantizationSpec(
+                method=method,
+                weights_bits=SMOOTHQUANT_WEIGHTS_BITS,
+                activations_bits=SMOOTHQUANT_ACTS_BITS,
+                kv_cache_bits=PTQ_TARGET_KV_BITS,
+                group_size=None,  # SmoothQuant uses per-tensor scaling
+                symmetric=True,
+                per_channel=True,
+                lm_head_dtype="fp16",
+                backend=backend,
+                extras=extras,
+            )
         
         return QuantizationSpec(
             method=method,

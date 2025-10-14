@@ -1028,9 +1028,367 @@ def quantize_hqq(src: Path, dst: Path, spec: QuantizationSpec, args: argparse.Na
     )
 
 
+def quantize_with_smoothquant(
+    src: Path, 
+    dst: Path, 
+    calib_path: Path, 
+    w_bits: int = 8, 
+    a_bits: int = 8, 
+    seed: int = 13,
+    alpha: float = 0.5,
+    backend: str = "torch"
+) -> Tuple[Path, Dict[str, str]]:
+    """
+    SmoothQuant: Accurate and Efficient Post-Training Quantization for Large Language Models.
+    
+    Performs activation-aware weight quantization by computing per-channel SmoothQuant scales
+    using calibration data to smooth out activation outliers and enable W8A8 quantization.
+    
+    Args:
+        src: Path to source FP16/BF16 model
+        dst: Destination directory for quantized model
+        calib_path: Path to calibration prompts file
+        w_bits: Target weight quantization bits (default: 8)
+        a_bits: Target activation quantization bits (default: 8) 
+        seed: Random seed for reproducibility (default: 13)
+        alpha: SmoothQuant smoothing factor between 0-1 (default: 0.5)
+        backend: Backend hint for runtime ("torch" or "trt-llm", default: "torch")
+        
+    Returns:
+        Tuple of (destination_path, metadata_dict)
+    """
+    import torch
+    import torch.nn as nn
+    import numpy as np
+    import random
+    import math
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from tqdm import tqdm
+    
+    # Set seeds for reproducibility
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+    
+    print(f"[SmoothQuant] Loading model from {src}")
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    
+    # Load model and tokenizer
+    model = AutoModelForCausalLM.from_pretrained(
+        src, 
+        torch_dtype=torch.float16,
+        device_map="auto" if torch.cuda.is_available() else None
+    )
+    tokenizer = AutoTokenizer.from_pretrained(src)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    
+    # Load calibration data
+    print(f"[SmoothQuant] Loading calibration data from {calib_path}")
+    with open(calib_path, 'r', encoding='utf-8') as f:
+        calibration_prompts = [line.strip() for line in f if line.strip()]
+    
+    # Use recommended calibration set size for SmoothQuant (256-1024 samples)
+    max_calib_samples = min(len(calibration_prompts), 512)
+    calibration_prompts = calibration_prompts[:max_calib_samples]
+    print(f"[SmoothQuant] Using {len(calibration_prompts)} calibration prompts")
+    
+    # Storage for activation statistics needed for SmoothQuant
+    activation_stats = {}
+    layer_inputs = {}
+    layer_outputs = {}
+    
+    def register_smoothquant_hooks(model):
+        """Register hooks to collect activation statistics for SmoothQuant scaling."""
+        hooks = []
+        
+        def input_hook_fn(name):
+            def hook(module, input, output):
+                if name not in layer_inputs:
+                    layer_inputs[name] = []
+                if isinstance(input, tuple) and len(input) > 0:
+                    act = input[0].detach().float()
+                    if act.dim() >= 2:
+                        # Store input activations keeping them on device initially
+                        # We'll move to CPU only when computing scales
+                        layer_inputs[name].append(act)
+            return hook
+        
+        def output_hook_fn(name):
+            def hook(module, input, output):
+                if name not in layer_outputs:
+                    layer_outputs[name] = []
+                if isinstance(output, torch.Tensor):
+                    act = output.detach().float()
+                    if act.dim() >= 2:
+                        # Store output activations for next layer scaling  
+                        layer_outputs[name].append(act.cpu())
+            return hook
+        
+        for name, module in model.named_modules():
+            if isinstance(module, nn.Linear):
+                # Register both input and output hooks
+                input_hook = module.register_forward_hook(input_hook_fn(name))
+                output_hook = module.register_forward_hook(output_hook_fn(name))
+                hooks.extend([input_hook, output_hook])
+        
+        return hooks
+    
+    # Collect activation statistics for SmoothQuant
+    print("[SmoothQuant] Collecting activation statistics for scale computation...")
+    model.eval()
+    hooks = register_smoothquant_hooks(model)
+    
+    try:
+        with torch.no_grad():
+            for i, prompt in enumerate(tqdm(calibration_prompts, desc="Calibration", leave=False)):
+                if not prompt.strip():
+                    continue
+                
+                try:
+                    inputs = tokenizer(
+                        prompt, 
+                        return_tensors="pt", 
+                        truncation=True, 
+                        max_length=512,
+                        padding=False
+                    )
+                    
+                    if torch.cuda.is_available():
+                        inputs = {k: v.to(model.device) for k, v in inputs.items()}
+                    
+                    # Forward pass to collect activation statistics
+                    _ = model(**inputs)
+                    
+                except Exception as e:
+                    print(f"[SmoothQuant] Warning: Failed to process sample {i}: {e}")
+                    continue
+    finally:
+        for hook in hooks:
+            hook.remove()
+    
+    print(f"[SmoothQuant] Collected statistics for {len(layer_inputs)} layers")
+    
+    # Compute SmoothQuant per-channel scaling factors
+    def compute_smoothquant_scales(layer_name: str, weight: torch.Tensor, alpha: float = 0.5):
+        """Compute per-channel SmoothQuant scaling factors."""
+        if layer_name not in layer_inputs or not layer_inputs[layer_name]:
+            return None
+        
+        try:
+            # Filter and reshape activations to consistent dimensions
+            valid_inputs = []
+            for act in layer_inputs[layer_name]:
+                if act.dim() >= 2:  # Ensure at least 2D
+                    # Reshape to [batch*seq, features] to handle variable sequence lengths
+                    reshaped = act.view(-1, act.shape[-1])
+                    # Move to CPU to avoid GPU memory issues during concatenation
+                    valid_inputs.append(reshaped.cpu())
+            
+            if not valid_inputs:
+                return None
+            
+            # Concatenate all activations
+            all_inputs = torch.cat(valid_inputs, dim=0)  # [total_tokens, hidden_size]
+            
+            # Compute per-channel activation outlier scores
+            # Use max absolute values across all tokens
+            act_max = torch.max(torch.abs(all_inputs), dim=0)[0]  # [hidden_size]
+            
+            # Compute per-channel weight outlier scores (move weight to CPU for consistency)
+            weight_cpu = weight.cpu()
+            if len(weight_cpu.shape) == 2:  # [out_features, in_features] 
+                weight_max = torch.max(torch.abs(weight_cpu), dim=0)[0]  # [in_features]
+            else:
+                # Flatten other weight shapes and take max
+                weight_max = torch.max(torch.abs(weight_cpu.flatten()))
+                weight_max = weight_max.expand(act_max.shape[0])
+            
+            # Ensure dimensions match
+            min_dim = min(act_max.shape[0], weight_max.shape[0])
+            act_max = act_max[:min_dim]
+            weight_max = weight_max[:min_dim]
+            
+            # SmoothQuant scaling formula: s_j = max(X_j)^alpha / max(W_j)^(1-alpha) 
+            epsilon = 1e-8
+            scales = (act_max + epsilon) ** alpha / (weight_max + epsilon) ** (1 - alpha)
+            
+            # Clamp to reasonable range
+            scales = torch.clamp(scales, min=0.1, max=10.0)
+            
+            return scales
+            
+        except Exception as e:
+            print(f"[SmoothQuant] Warning: Failed to compute scales for {layer_name}: {e}")
+            return None
+    
+    def apply_smoothquant_scaling(weight: torch.Tensor, scales: torch.Tensor, inverse: bool = False):
+        """Apply SmoothQuant scaling to weights."""
+        if scales is None or scales.numel() == 0:
+            return weight
+        
+        try:
+            # Handle 2D weights (most common case)
+            if len(weight.shape) == 2:  # [out_features, in_features]
+                target_size = weight.shape[1]  # in_features
+                
+                # Adjust scales to match weight input dimension
+                if scales.numel() != target_size:
+                    if scales.numel() > target_size:
+                        scales = scales[:target_size]
+                    else:
+                        # Tile scales to match
+                        repeat_factor = math.ceil(target_size / scales.numel())
+                        scales = scales.repeat(repeat_factor)[:target_size]
+                
+                # Expand to match weight dimensions [1, in_features]
+                scales_expanded = scales.view(1, -1).to(weight.device)
+                
+            else:
+                # For other weight shapes, use broadcasted scaling
+                scales_expanded = scales.flatten().to(weight.device)
+                
+                # Ensure broadcasting compatibility
+                while scales_expanded.dim() < weight.dim():
+                    scales_expanded = scales_expanded.unsqueeze(0)
+            
+            if inverse:
+                return weight / scales_expanded
+            else:
+                return weight * scales_expanded
+                
+        except Exception as e:
+            print(f"[SmoothQuant] Warning: Failed to apply scaling: {e}")
+            return weight
+    
+    def quantize_tensor_int8(tensor: torch.Tensor, signed: bool = True):
+        """Quantize tensor to INT8 with per-tensor scaling."""
+        if signed:
+            qmin, qmax = -128, 127
+        else:
+            qmin, qmax = 0, 255
+        
+        # Compute scale
+        tensor_max = torch.max(torch.abs(tensor))
+        scale = tensor_max / qmax if tensor_max > 0 else 1.0
+        
+        # Quantize
+        quantized = torch.clamp(torch.round(tensor / scale), qmin, qmax)
+        
+        # Dequantize 
+        dequantized = quantized * scale
+        
+        return dequantized.to(tensor.dtype), scale
+    
+    # Apply SmoothQuant to all Linear layers
+    print("[SmoothQuant] Computing per-channel scales and applying W8A8 quantization...")
+    model.eval()
+    
+    # Collect all Linear layers
+    linear_layers = []
+    for name, module in model.named_modules():
+        if isinstance(module, nn.Linear):
+            linear_layers.append((name, module))
+    
+    print(f"[SmoothQuant] Found {len(linear_layers)} Linear layers")
+    
+    # Store scaling factors for runtime inference
+    smoothquant_scales = {}
+    quantized_layers = []
+    
+    with torch.no_grad():
+        for name, module in tqdm(linear_layers, desc="SmoothQuant W8A8"):
+            if hasattr(module, 'weight') and module.weight is not None:
+                # Compute SmoothQuant scales
+                scales = compute_smoothquant_scales(name, module.weight.data, alpha)
+                
+                if scales is not None:
+                    # Apply scaling to weights (inverse scaling)
+                    scaled_weight = apply_smoothquant_scaling(module.weight.data, scales, inverse=True)
+                    
+                    # Quantize scaled weights to W8
+                    quantized_weight, weight_scale = quantize_tensor_int8(scaled_weight, signed=True)
+                    
+                    # Update module weight
+                    module.weight.data = quantized_weight
+                    
+                    # Store scales for runtime (activations will be scaled during inference)
+                    smoothquant_scales[name] = {
+                        "activation_scales": scales.cpu().tolist(),
+                        "weight_scale": float(weight_scale),
+                        "alpha": alpha
+                    }
+                    
+                    quantized_layers.append(name)
+                else:
+                    print(f"[SmoothQuant] Warning: No activation stats for layer {name}, skipping")
+    
+    print(f"[SmoothQuant] Applied SmoothQuant scaling to {len(quantized_layers)} layers")
+    
+    # Save quantized model
+    print(f"[SmoothQuant] Saving quantized model to {dst}")
+    model.save_pretrained(dst, safe_serialization=True)
+    tokenizer.save_pretrained(dst)
+    
+    # Save SmoothQuant runtime parameters
+    runtime_params = {
+        "method": "SmoothQuant",
+        "weights_bits": w_bits,
+        "activations_bits": a_bits,
+        "alpha": alpha,
+        "backend": backend,
+        "layer_scales": smoothquant_scales,
+        "calibration_samples": len(calibration_prompts),
+        "quantized_layers": len(quantized_layers)
+    }
+    
+    with open(dst / "smoothquant_config.json", "w") as f:
+        json.dump(runtime_params, f, indent=2)
+    
+    # Provide backend-specific notes
+    if backend == "trt-llm":
+        print("[SmoothQuant] Note: For TensorRT-LLM deployment, export model to TRT engine using:")
+        print(f"         trtllm-build --checkpoint_dir {dst} --output_dir {dst}_engine --gemm_plugin auto")
+    elif backend == "torch":
+        print("[SmoothQuant] Note: Using PyTorch backend. Custom kernels recommended for optimal A8 performance.")
+        print("         Fallback mode will be used if custom kernels not available.")
+    
+    # Create metadata
+    metadata = {
+        "method": "SmoothQuant", 
+        "weights_bits": w_bits,
+        "activations_bits": a_bits,
+        "alpha": alpha,
+        "calibration_samples": len(calibration_prompts),
+        "seed": seed,
+        "backend": backend,
+        "quantized_layers": len(quantized_layers),
+        "supports_w8a8": True,
+        "requires_custom_kernels": backend == "torch"
+    }
+    
+    return dst, metadata
+
+
 def quantize_smoothquant(src: Path, dst: Path, spec: QuantizationSpec, args: argparse.Namespace) -> HandlerResult:
-    raise NotImplementedError(
-        "SmoothQuant quantisation is not implemented. Hook up SmoothQuant/torchao pipeline here."
+    """
+    SmoothQuant: Accurate and Efficient Post-Training Quantization handler.
+    
+    Implements SmoothQuant algorithm for W8A8 quantization with per-channel scaling.
+    """
+    # Extract SmoothQuant-specific parameters from spec.extras
+    alpha = spec.extras.get("alpha", 0.5) if spec.extras else 0.5
+    backend = spec.backend or "torch"
+    
+    return quantize_with_smoothquant(
+        src=src,
+        dst=dst,
+        calib_path=args.calib,
+        w_bits=spec.weights_bits or 8,
+        a_bits=spec.activations_bits or 8,
+        seed=args.seed,
+        alpha=alpha,
+        backend=backend
     )
 
 

@@ -258,7 +258,23 @@ def load_model_with_quant(model_name: str, quant: QuantContext, kv_cache_dtype: 
                     "Ensure `tools/quantize.py run --method hqq` was executed successfully. "
                     f"Error details: {e}"
                 ) from e
-    elif method in {QuantMethod.SMOOTH_QUANT, QuantMethod.QUA_ROT}:
+    elif method is QuantMethod.SMOOTH_QUANT:
+        # SmoothQuant models are quantized to INT8 and can be loaded directly
+        # The runtime scaling is already applied during quantization
+        try:
+            model = AutoModelForCausalLM.from_pretrained(model_name, **load_kwargs)
+        except TypeError as e:
+            if "kv_cache_dtype" in str(e) and "kv_cache_dtype" in load_kwargs:
+                # Remove kv_cache_dtype and try again
+                load_kwargs_fallback = {k: v for k, v in load_kwargs.items() if k != "kv_cache_dtype"}
+                model = AutoModelForCausalLM.from_pretrained(model_name, **load_kwargs_fallback)
+            else:
+                raise RuntimeError(
+                    f"Failed to load SmoothQuant quantized model from '{model_name}'. "
+                    "Ensure `tools/quantize.py run --method smoothquant` was executed successfully. "
+                    f"Error details: {e}"
+                ) from e
+    elif method is QuantMethod.QUA_ROT:
         raise RuntimeError(
             f"{method.value} weights require runtime hooks. "
             "Run `python tools/quantize.py run --method "

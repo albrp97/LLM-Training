@@ -167,13 +167,18 @@ class QuantizationSpec:
         if self.method is not QuantMethod.NO_QUANT and self.lm_head_dtype and "head" not in extras:
             extras["head"] = self.lm_head_dtype
 
-        # Add BRECQ-specific mixed precision tags
+        # Add method-specific tags
         if self.method == QuantMethod.BRECQ and self.extras:
             if self.extras.get("mixed_precision"):
                 extras["mix"] = True
             attention_bits = self.extras.get("attention_bits")
             if attention_bits and attention_bits != bits_for_tag:
                 extras[f"attn{attention_bits}"] = True
+        elif self.method == QuantMethod.SMOOTH_QUANT and self.extras:
+            # SmoothQuant uses W8A8 format by default
+            alpha = self.extras.get("alpha")
+            if alpha and alpha != 0.5:  # Only include non-default alpha
+                extras[f"alpha{alpha}"] = True
 
         return tag_quant(
             self.method,
