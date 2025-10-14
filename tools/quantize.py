@@ -841,6 +841,15 @@ def quantize_with_gptq(
     
     print(f"[GPTQ] Loading model from {src}")
     
+    # Check GPU availability and memory
+    if torch.cuda.is_available():
+        gpu_name = torch.cuda.get_device_name(0)
+        gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3
+        print(f"[GPTQ] Using GPU: {gpu_name} ({gpu_memory:.1f} GB VRAM)")
+        print(f"[GPTQ] Initial VRAM usage: {torch.cuda.memory_allocated(0) / 1024**3:.2f} GB")
+    else:
+        print("[GPTQ] Warning: CUDA not available, will use CPU (very slow)")
+    
     # Load tokenizer
     tokenizer = AutoTokenizer.from_pretrained(src)
     if tokenizer.pad_token is None:
@@ -881,28 +890,39 @@ def quantize_with_gptq(
     print(f"[GPTQ] Initializing GPTQ quantization: {bits}-bit, group_size={group_size}, symmetric={symmetric}")
     
     try:
+        print("[GPTQ] Loading model with AutoGPTQ...")
         # Load model with GPTQ
         model = AutoGPTQForCausalLM.from_pretrained(
             str(src),
             quantize_config=quantize_config,
             low_cpu_mem_usage=True,
             torch_dtype=torch.float16,
-            trust_remote_code=True
+            trust_remote_code=True,
+            device_map="auto" if torch.cuda.is_available() else "cpu"
         )
+        
+        # Check VRAM usage after loading
+        if torch.cuda.is_available():
+            print(f"[GPTQ] VRAM usage after loading: {torch.cuda.memory_allocated(0) / 1024**3:.2f} GB")
         
         # Create tokenization function for calibration
         tokenize_function = make_tokenize_function(tokenizer, max_len=512)
         
         # Quantize the model
         print("[GPTQ] Running GPTQ quantization algorithm...")
+        print("[GPTQ] This may take several minutes, progress will be shown below...")
         model.quantize(
             calib_dataset.map(tokenize_function, batched=True, desc="Tokenizing calibration data"),
             use_triton=False,  # Disable triton for better compatibility
             batch_size=1,  # Small batch size for stability
             use_cuda_fp16=True if torch.cuda.is_available() else False,
             autotune_warmup_after_quantized=False,  # Disable warmup for faster quantization
-            cache_examples_on_gpu=False  # Keep examples on CPU to save VRAM
+            cache_examples_on_gpu=torch.cuda.is_available()  # Use GPU caching if available
         )
+        
+        # Check final VRAM usage
+        if torch.cuda.is_available():
+            print(f"[GPTQ] VRAM usage after quantization: {torch.cuda.memory_allocated(0) / 1024**3:.2f} GB")
         
         print(f"[GPTQ] Saving quantized model to {dst}")
         # Save the quantized model

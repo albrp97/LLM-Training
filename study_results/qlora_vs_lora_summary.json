@@ -1,0 +1,208 @@
+{
+  "study_type": "qlora_vs_lora_comparison",
+  "generated_at": "2025-10-14T14:22:35.920899",
+  "models_compared": [
+    "base",
+    "lora",
+    "qlora"
+  ],
+  "key_metrics": {
+    "base": {
+      "model_name": "Models/Qwen3-0.6B-base",
+      "quantization_method": "Unknown",
+      "total_params": 0,
+      "vram_usage_gb": 0,
+      "avg_latency_ms": 0,
+      "total_eval_time_s": 0,
+      "datasets": {
+        "arc": {
+          "metric_name": "accuracy",
+          "metric_value": 50.0,
+          "accuracy": 50.0,
+          "f1_macro": 0.5111,
+          "mcc": 0,
+          "total_samples": 20,
+          "avg_latency_ms": 1767.6000000000001
+        },
+        "openmath": {
+          "metric_name": "avg_abs_diff",
+          "metric_value": 2294.642941,
+          "accuracy": 10.0,
+          "f1_macro": 0,
+          "mcc": 0,
+          "total_samples": 20,
+          "avg_latency_ms": 7346.8
+        },
+        "squad": {
+          "metric_name": "accuracy",
+          "metric_value": 5.0,
+          "accuracy": 5.0,
+          "f1_macro": 0,
+          "mcc": 0,
+          "total_samples": 20,
+          "avg_latency_ms": 233.4
+        }
+      }
+    },
+    "lora": {
+      "model_name": "Models/Qwen3-0.6B-openmath_SFT_LoRa64_NoQuant/",
+      "quantization_method": "Unknown",
+      "total_params": 0,
+      "vram_usage_gb": 0,
+      "avg_latency_ms": 0,
+      "total_eval_time_s": 0,
+      "datasets": {
+        "arc": {
+          "metric_name": "accuracy",
+          "metric_value": 65.0,
+          "accuracy": 65.0,
+          "f1_macro": 0.661,
+          "mcc": 0,
+          "total_samples": 20,
+          "avg_latency_ms": 1840.7
+        },
+        "openmath": {
+          "metric_name": "avg_abs_diff",
+          "metric_value": 137.154211,
+          "accuracy": 0.0,
+          "f1_macro": 0,
+          "mcc": 0,
+          "total_samples": 20,
+          "avg_latency_ms": 3647.9
+        },
+        "squad": {
+          "metric_name": "accuracy",
+          "metric_value": 5.0,
+          "accuracy": 5.0,
+          "f1_macro": 0,
+          "mcc": 0,
+          "total_samples": 20,
+          "avg_latency_ms": 236.0
+        }
+      }
+    },
+    "qlora": {
+      "model_name": "Models/Qwen3-0.6B-openmath_SFT_LoRa64_QLORA_w4_headbf16/",
+      "quantization_method": "Unknown",
+      "total_params": 0,
+      "vram_usage_gb": 0,
+      "avg_latency_ms": 0,
+      "total_eval_time_s": 0,
+      "datasets": {
+        "arc": {
+          "metric_name": "accuracy",
+          "metric_value": 50.0,
+          "accuracy": 50.0,
+          "f1_macro": 0.4937,
+          "mcc": 0,
+          "total_samples": 20,
+          "avg_latency_ms": 671.6999999999999
+        },
+        "openmath": {
+          "metric_name": "avg_abs_diff",
+          "metric_value": 50656.7865,
+          "accuracy": 0.0,
+          "f1_macro": 0,
+          "mcc": 0,
+          "total_samples": 20,
+          "avg_latency_ms": 8326.9
+        },
+        "squad": {
+          "metric_name": "accuracy",
+          "metric_value": 0.0,
+          "accuracy": 0.0,
+          "f1_macro": 0,
+          "mcc": 0,
+          "total_samples": 20,
+          "avg_latency_ms": 375.2
+        }
+      }
+    }
+  },
+  "performance_differences": {
+    "lora_vs_base": {
+      "arc": {
+        "metric_improvement": 15.0,
+        "metric_improvement_pct": 30.0,
+        "base_value": 50.0,
+        "lora_value": 65.0,
+        "metric_name": "accuracy"
+      },
+      "openmath": {
+        "metric_improvement": 2157.48873,
+        "metric_improvement_pct": 94.02285172349174,
+        "base_value": 2294.642941,
+        "lora_value": 137.154211,
+        "metric_name": "avg_abs_diff"
+      },
+      "squad": {
+        "metric_improvement": 0.0,
+        "metric_improvement_pct": 0.0,
+        "base_value": 5.0,
+        "lora_value": 5.0,
+        "metric_name": "accuracy"
+      }
+    },
+    "qlora_vs_base": {
+      "arc": {
+        "metric_improvement": 0.0,
+        "metric_improvement_pct": 0.0,
+        "base_value": 50.0,
+        "qlora_value": 50.0,
+        "metric_name": "accuracy"
+      },
+      "openmath": {
+        "metric_improvement": -48362.143559000004,
+        "metric_improvement_pct": -2107.610848506299,
+        "base_value": 2294.642941,
+        "qlora_value": 50656.7865,
+        "metric_name": "avg_abs_diff"
+      },
+      "squad": {
+        "metric_improvement": -5.0,
+        "metric_improvement_pct": -100.0,
+        "base_value": 5.0,
+        "qlora_value": 0.0,
+        "metric_name": "accuracy"
+      }
+    },
+    "qlora_vs_lora": {
+      "arc": {
+        "metric_difference": -15.0,
+        "metric_difference_pct": -23.076923076923077,
+        "lora_value": 65.0,
+        "qlora_value": 50.0,
+        "metric_name": "accuracy",
+        "quantization_impact": "negative"
+      },
+      "openmath": {
+        "metric_difference": -50519.632289,
+        "metric_difference_pct": -36834.18242914904,
+        "lora_value": 137.154211,
+        "qlora_value": 50656.7865,
+        "metric_name": "avg_abs_diff",
+        "quantization_impact": "negative"
+      },
+      "squad": {
+        "metric_difference": -5.0,
+        "metric_difference_pct": -100.0,
+        "lora_value": 5.0,
+        "qlora_value": 0.0,
+        "metric_name": "accuracy",
+        "quantization_impact": "negative"
+      }
+    },
+    "summary": {
+      "avg_lora_improvement": 724.16291,
+      "avg_qlora_improvement": -16122.381186333334,
+      "avg_qlora_vs_lora_diff": -16846.544096333335,
+      "quantization_impact_summary": "negative",
+      "total_datasets_compared": 3
+    }
+  },
+  "conclusions": {
+    "qlora_vs_lora_winner": "lora",
+    "avg_difference": -16846.544096333335,
+    "quantization_impact": "negative"
+  }
+}

@@ -44,7 +44,7 @@ import time
 from collections import Counter
 
 
-TRUNC_EVAL = 2  # Set to a positive int to cap samples per dataset during evaluation.
+TRUNC_EVAL = 20  # Set to a positive int to cap samples per dataset during evaluation.
 VERBOSE = False  # set to False to hide per-dataset logs and summary prints
 
 datasets_info = {

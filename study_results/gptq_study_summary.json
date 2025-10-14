@@ -1,0 +1,116 @@
+{
+  "study_metadata": {
+    "timestamp": "2025-10-14 13:56:51",
+    "method": "GPTQ",
+    "base_model": "Qwen3-0.6B",
+    "training_dataset": "OpenMathInstruct-2",
+    "training_samples": 1000,
+    "evaluation_samples_per_dataset": 20,
+    "quantization_config": {
+      "method": "GPTQ",
+      "weights_bits": 4,
+      "group_size": 64,
+      "calibration_samples": 100
+    }
+  },
+  "model_comparison": {
+    "base_original": {
+      "overall_accuracy": 21.67,
+      "total_samples": 60,
+      "avg_latency_sec": 3.1159,
+      "total_time_sec": 186.956,
+      "avg_tokens_per_response": 102.77,
+      "total_tokens": 6166,
+      "peak_vram_gb": 1.28,
+      "quantization_method": "NoQuant",
+      "weights_bits": 16,
+      "group_size": null,
+      "dataset_accuracies": {
+        "test-ai2_arc.parquet": 50.0,
+        "test-OpenMathInstruct-2.parquet": 10.0,
+        "test-squad_v2.parquet": 5.0
+      }
+    },
+    "base_gptq": {
+      "overall_accuracy": 16.67,
+      "total_samples": 60,
+      "avg_latency_sec": 29.6925,
+      "total_time_sec": 1781.5508,
+      "avg_tokens_per_response": 967.63,
+      "total_tokens": 58058,
+      "peak_vram_gb": 1.323,
+      "quantization_method": "GPTQ",
+      "weights_bits": 4,
+      "group_size": 64,
+      "dataset_accuracies": {
+        "test-ai2_arc.parquet": 0.0,
+        "test-OpenMathInstruct-2.parquet": 0.0,
+        "test-squad_v2.parquet": 50.0
+      }
+    },
+    "trained_original": {
+      "overall_accuracy": 6.67,
+      "total_samples": 60,
+      "avg_latency_sec": 0.1262,
+      "total_time_sec": 7.5744,
+      "avg_tokens_per_response": 2.82,
+      "total_tokens": 169,
+      "peak_vram_gb": 1.219,
+      "quantization_method": "NoQuant",
+      "weights_bits": 16,
+      "group_size": null,
+      "dataset_accuracies": {
+        "test-ai2_arc.parquet": 15.0,
+        "test-OpenMathInstruct-2.parquet": 0.0,
+        "test-squad_v2.parquet": 5.0
+      }
+    },
+    "trained_gptq": {
+      "overall_accuracy": 16.67,
+      "total_samples": 60,
+      "avg_latency_sec": 29.7427,
+      "total_time_sec": 1784.5649,
+      "avg_tokens_per_response": 935.82,
+      "total_tokens": 56149,
+      "peak_vram_gb": 1.323,
+      "quantization_method": "GPTQ",
+      "weights_bits": 4,
+      "group_size": 64,
+      "dataset_accuracies": {
+        "test-ai2_arc.parquet": 0.0,
+        "test-OpenMathInstruct-2.parquet": 0.0,
+        "test-squad_v2.parquet": 50.0
+      }
+    }
+  },
+  "analysis": {
+    "training_improvement": {
+      "accuracy_gain_pct": -15.000000000000002,
+      "is_beneficial": false
+    },
+    "base_quantization_impact": {
+      "accuracy_loss_pct": 5.0,
+      "accuracy_retention_pct": 76.92662667281957,
+      "speed_improvement_factor": 0.10493895764923802,
+      "vram_reduction_gb": -0.04299999999999993
+    },
+    "trained_quantization_impact": {
+      "accuracy_loss_pct": -10.000000000000002,
+      "accuracy_retention_pct": 249.92503748125938,
+      "speed_improvement_factor": 0.004243057960440714,
+      "vram_reduction_gb": -0.10399999999999987
+    },
+    "best_performance": {
+      "model": "Base Original",
+      "accuracy": 21.67
+    }
+  },
+  "summary": {
+    "best_model": "Base Original",
+    "best_accuracy": 21.67,
+    "training_beneficial": false,
+    "training_gain": -15.000000000000002,
+    "base_quantization_retention": 76.92662667281957,
+    "trained_quantization_retention": 249.92503748125938
+  }
+}

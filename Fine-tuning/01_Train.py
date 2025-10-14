@@ -43,15 +43,15 @@ except ImportError as e:
 # User configuration
 # -----------------------------------------------------------
 
-train = False  # Just create model without training for testing
+train = True  # Enable training to create our trained model for quantization study
 
-DATASET_CHOICE = "openmath"
+DATASET_CHOICE = "openmath"  # Create trained model with full dataset
 # options: None (saves base model), "openmath", "squad"
 # arc results have no variation, so we will not test arc for now
 # we will not test boolq for now
 
 # Optional truncation switches (set to a positive int to limit samples).
-TRUNC_TRAIN = 5  # Number of training samples to keep; None/0 keeps all.
+TRUNC_TRAIN = None  # Number of training samples to keep; None/0 keeps all.
 
 FINETUNING = "SFT"
 
@@ -60,13 +60,13 @@ MODEL_NAME = "Qwen/Qwen3-0.6B"
 device_map = {"": 0} if torch.cuda.is_available() else {"": "cpu"}
 
 
-PEFT_CONFIG = "NoPeft" 
+PEFT_CONFIG = "LoRa"  # Switch to LoRA for comparison study 
 # options: "NoPeft", "LoRa", "VeRa", "DoRa"
 # -----------------------------------------------------------
 # LoRa hyperparameters
 # -----------------------------------------------------------
 
-lora_r = 256
+lora_r = 64  # Use smaller rank for faster training in comparison study
 # 32 is 1.5% --
 # 64 is 3%
 # 128 is 5.8%
@@ -98,7 +98,7 @@ merge_after_train = True
 # Keep LM head in fp16 when merging (experimental ablation flag)
 keep_lm_head_fp16 = False
 
-QUANT_METHOD = "NoQuant"  
+QUANT_METHOD = "QLoRA"  # Use QLoRA for quantized training  
 # options: "NoQuant", "QLORA", "GPTQ", "QuaRot", "AdaRound", "BRECQ", "AWQ", "HQQ", "SmoothQuant"
 
 # Target settings used for PTQ pipelines (applied post-training via tools/quantize.py)
