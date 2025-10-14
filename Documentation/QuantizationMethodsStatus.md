@@ -39,6 +39,18 @@ This document tracks the current status of quantization methods in our LLM train
   - Works with all model architectures
   - Automatic calibration data generation
 
+### QuaRot (Quantization with Rotations)
+- **Status**: ✅ **Complete and tested**
+- **Model Support**: ✅ **Universal support via PyTorch implementation**
+- **Features**: W4A4/W4A8/W4A8KV8 quantization with learned rotation matrices
+- **Usage**: `QUANT_METHOD = "QuaRot"` + `python tools/quantize.py run --method quarot`
+- **Implementation**: Complete PTQ pipeline with PCA-based rotation learning
+- **Benefits**:
+  - 75-80% memory reduction (W4A4KV4 configuration)
+  - Supports activation and KV-cache quantization
+  - Configurable precision (A4/A8, KV4/KV8)
+  - Self-contained runtime hooks for inference
+
 ## 🔄 Planned/Partially Implemented
 
 ### AWQ (Activation-aware Weight Quantization)
@@ -65,10 +77,6 @@ This document tracks the current status of quantization methods in our LLM train
 
 ## ❌ Not Yet Implemented
 
-### QuaRot (Quantization with Rotation)
-- **Status**: ❌ Placeholder only
-- **Implementation Needed**: Full QuaRot pipeline
-
 ### AdaRound (Adaptive Rounding)
 - **Status**: ✅ **Implemented and tested**
 - **Model Support**: ✅ Qwen3 support (tested)
@@ -87,8 +95,9 @@ This document tracks the current status of quantization methods in our LLM train
 1. **Training**: Use `QLoRA` - proven, fast, excellent results
 2. **Inference (W4)**: Use `GPTQ` or `AWQ` - both provide 75%/43% memory reduction respectively
 3. **Inference (W8A8)**: Use `SmoothQuant` - 50% memory reduction with activation quantization
-4. **Research**: Try `AdaRound` or `BRECQ` for comparison
-5. **All methods**: Now fully supported with Qwen models
+4. **Extreme Compression (W4A4)**: Use `QuaRot` - 75-80% memory reduction with activation quantization
+5. **Research**: Try `AdaRound`, `BRECQ`, or `QuaRot` for comparison
+6. **All methods**: Now fully supported with Qwen models
 
 ### For LLaMA Models  
 1. **Training**: `QLoRA`
