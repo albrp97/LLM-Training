@@ -1,0 +1,201 @@
+{
+  "study_type": "awq_post_training_quantization",
+  "generated_at": "2025-10-14T17:34:09.563267",
+  "models_compared": [
+    "base_no_quant",
+    "base_awq",
+    "nopeft_no_quant",
+    "nopeft_awq"
+  ],
+  "key_metrics": {
+    "base_no_quant": {
+      "model_name": "Models/Qwen3-0.6B-base",
+      "quantization_method": "Unknown",
+      "total_params": 0,
+      "vram_usage_gb": 1.375,
+      "avg_latency_ms": 0,
+      "total_eval_time_s": 0,
+      "datasets": {
+        "arc": {
+          "metric_name": "accuracy",
+          "metric_value": 50.0,
+          "accuracy": 50.0,
+          "f1_macro": 0.5111,
+          "mcc": 0,
+          "total_samples": 20,
+          "avg_latency_ms": 1767.6000000000001
+        },
+        "openmath": {
+          "metric_name": "avg_abs_diff",
+          "metric_value": 2294.642941,
+          "accuracy": 10.0,
+          "f1_macro": 0,
+          "mcc": 0,
+          "total_samples": 20,
+          "avg_latency_ms": 7346.8
+        },
+        "squad": {
+          "metric_name": "accuracy",
+          "metric_value": 5.0,
+          "accuracy": 5.0,
+          "f1_macro": 0,
+          "mcc": 0,
+          "total_samples": 20,
+          "avg_latency_ms": 233.4
+        }
+      }
+    },
+    "base_awq": {
+      "model_name": "Models/Qwen3-0.6B-base_awq_w4g128/",
+      "quantization_method": "Unknown",
+      "total_params": 0,
+      "vram_usage_gb": 1.434,
+      "avg_latency_ms": 0,
+      "total_eval_time_s": 0,
+      "datasets": {
+        "arc": {
+          "metric_name": "accuracy",
+          "metric_value": 0.0,
+          "accuracy": 0.0,
+          "f1_macro": 0.0,
+          "mcc": 0,
+          "total_samples": 20,
+          "avg_latency_ms": 29385.899999999998
+        },
+        "squad": {
+          "metric_name": "accuracy",
+          "metric_value": 50.0,
+          "accuracy": 50.0,
+          "f1_macro": 0,
+          "mcc": 0,
+          "total_samples": 20,
+          "avg_latency_ms": 29504.5
+        }
+      }
+    },
+    "nopeft_no_quant": {
+      "model_name": "Models/Qwen3-0.6B-openmath_SFT_NoPeft_NoQuant",
+      "quantization_method": "Unknown",
+      "total_params": 0,
+      "vram_usage_gb": 1.252,
+      "avg_latency_ms": 0,
+      "total_eval_time_s": 0,
+      "datasets": {
+        "arc": {
+          "metric_name": "accuracy",
+          "metric_value": 15.0,
+          "accuracy": 15.0,
+          "f1_macro": 0.2143,
+          "mcc": 0,
+          "total_samples": 20,
+          "avg_latency_ms": 88.6
+        },
+        "openmath": {
+          "metric_name": "avg_abs_diff",
+          "metric_value": 6.0,
+          "accuracy": 0.0,
+          "f1_macro": 0,
+          "mcc": 0,
+          "total_samples": 20,
+          "avg_latency_ms": 43.5
+        },
+        "squad": {
+          "metric_name": "accuracy",
+          "metric_value": 5.0,
+          "accuracy": 5.0,
+          "f1_macro": 0,
+          "mcc": 0,
+          "total_samples": 20,
+          "avg_latency_ms": 246.60000000000002
+        }
+      }
+    },
+    "nopeft_awq": {
+      "model_name": "Models/Qwen3-0.6B-openmath_SFT_NoPeft_NoQuant_awq_w4g128/",
+      "quantization_method": "Unknown",
+      "total_params": 0,
+      "vram_usage_gb": 1.434,
+      "avg_latency_ms": 0,
+      "total_eval_time_s": 0,
+      "datasets": {
+        "arc": {
+          "metric_name": "accuracy",
+          "metric_value": 0.0,
+          "accuracy": 0.0,
+          "f1_macro": 0.0,
+          "mcc": 0,
+          "total_samples": 20,
+          "avg_latency_ms": 29788.2
+        },
+        "squad": {
+          "metric_name": "accuracy",
+          "metric_value": 50.0,
+          "accuracy": 50.0,
+          "f1_macro": 0,
+          "mcc": 0,
+          "total_samples": 20,
+          "avg_latency_ms": 29882.6
+        }
+      }
+    }
+  },
+  "base_model_impact": {
+    "per_dataset": {
+      "arc": {
+        "metric_improvement": -50.0,
+        "metric_improvement_pct": -100.0,
+        "no_quant_value": 50.0,
+        "awq_value": 0.0,
+        "metric_name": "accuracy",
+        "quantization_impact": "negative"
+      },
+      "squad": {
+        "metric_improvement": 45.0,
+        "metric_improvement_pct": 900.0,
+        "no_quant_value": 5.0,
+        "awq_value": 50.0,
+        "metric_name": "accuracy",
+        "quantization_impact": "positive"
+      }
+    },
+    "summary": {
+      "avg_improvement": -2.5,
+      "total_datasets": 2,
+      "positive_impacts": 1,
+      "negative_impacts": 1,
+      "overall_impact": "negative"
+    }
+  },
+  "nopeft_model_impact": {
+    "per_dataset": {
+      "arc": {
+        "metric_improvement": -15.0,
+        "metric_improvement_pct": -100.0,
+        "no_quant_value": 15.0,
+        "awq_value": 0.0,
+        "metric_name": "accuracy",
+        "quantization_impact": "negative"
+      },
+      "squad": {
+        "metric_improvement": 45.0,
+        "metric_improvement_pct": 900.0,
+        "no_quant_value": 5.0,
+        "awq_value": 50.0,
+        "metric_name": "accuracy",
+        "quantization_impact": "positive"
+      }
+    },
+    "summary": {
+      "avg_improvement": 15.0,
+      "total_datasets": 2,
+      "positive_impacts": 1,
+      "negative_impacts": 1,
+      "overall_impact": "positive"
+    }
+  },
+  "conclusions": {
+    "base_model_winner": "no_quant",
+    "nopeft_model_winner": "awq",
+    "overall_awq_effectiveness": "positive"
+  }
+}
