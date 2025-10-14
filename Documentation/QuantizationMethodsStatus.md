@@ -61,8 +61,15 @@ This document tracks the current status of quantization methods in our LLM train
 - **Usage**: `QUANT_METHOD = "AWQ"` with automatic calibration data generation
 
 ### HQQ (Half-Quadratic Quantization)
-- **Status**: 🔄 Placeholder implemented
-- **Implementation Needed**: Full HQQ pipeline
+- **Status**: ✅ **Fully Implemented & Working**
+- **Model Support**: ✅ **Universal support via HQQ library**
+- **Features**: Calibration-free weight quantization with half-quadratic optimization
+- **Usage**: `QUANT_METHOD = "HQQ"` + `python tools/quantize.py run --method hqq`
+- **Benefits**:
+  - No calibration data required (fastest quantization)
+  - Half-quadratic optimization for optimal quantization parameters
+  - Zero setup time and rapid deployment
+  - Official HQQ library integration with HQQLinear
 
 ### SmoothQuant (Recommended for W8A8 quantization)
 - **Status**: ✅ Complete and tested
@@ -96,8 +103,9 @@ This document tracks the current status of quantization methods in our LLM train
 2. **Inference (W4)**: Use `GPTQ` or `AWQ` - both provide 75%/43% memory reduction respectively
 3. **Inference (W8A8)**: Use `SmoothQuant` - 50% memory reduction with activation quantization
 4. **Extreme Compression (W4A4)**: Use `QuaRot` - 75-80% memory reduction with activation quantization
-5. **Research**: Try `AdaRound`, `BRECQ`, or `QuaRot` for comparison
-6. **All methods**: Now fully supported with Qwen models
+5. **Rapid Deployment (Calibration-Free)**: Use `HQQ` - fastest quantization with no calibration needed
+6. **Research**: Try `AdaRound`, `BRECQ`, `QuaRot`, or `HQQ` for comparison
+7. **All methods**: Now fully supported with Qwen models
 
 ### For LLaMA Models  
 1. **Training**: `QLoRA`
