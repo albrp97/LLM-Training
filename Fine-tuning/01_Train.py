@@ -85,7 +85,7 @@ QUANT_METHOD = "NoQuant"
 
 # Target settings used for PTQ pipelines (applied post-training via tools/quantize.py)
 PTQ_TARGET_WEIGHTS_BITS = 4
-PTQ_TARGET_GROUP_SIZE = 128  # Default group size for AWQ 
+PTQ_TARGET_GROUP_SIZE = 128  # Default group size for AWQ; HQQ uses 64
 PTQ_TARGET_ACTS_BITS = 8
 PTQ_TARGET_KV_BITS = 8
 

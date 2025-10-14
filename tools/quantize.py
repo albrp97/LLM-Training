@@ -863,12 +863,169 @@ def quantize_awq(src: Path, dst: Path, spec: QuantizationSpec, args: argparse.Na
     )
 
 
-def quantize_hqq(src: Path, dst: Path, spec: QuantizationSpec, args: argparse.Namespace) -> HandlerResult:
-    _require(
-        "hqq",
-        "HQQ quantisation requires the `hqq` package. Install it with `pip install hqq`.",
+def quantize_with_hqq(
+    src: Path, 
+    dst: Path, 
+    bits: int = 4, 
+    group_size: int = 64, 
+    quant_zero: bool = True, 
+    quant_scale: bool = True,
+    seed: int = 13
+) -> Tuple[Path, Dict[str, str]]:
+    """
+    HQQ: Half-Quadratic Quantization.
+    
+    Performs calibration-free weight quantization using HQQ algorithm that quantizes
+    weights without requiring calibration data, using efficient half-quadratic optimization.
+    
+    Args:
+        src: Path to source FP16/BF16 model
+        dst: Destination directory for quantized model
+        bits: Target weight quantization bits (default: 4)
+        group_size: Quantization group size (default: 64)
+        quant_zero: Quantize zero points (default: True)
+        quant_scale: Quantize scales (default: True) 
+        seed: Random seed for reproducibility (default: 13)
+        
+    Returns:
+        Tuple of (destination_path, metadata_dict)
+    """
+    import torch
+    import torch.nn as nn
+    import random
+    import numpy as np
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from hqq.core.quantize import HQQLinear, BaseQuantizeConfig
+    from tqdm import tqdm
+    
+    # Set seeds for reproducibility
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+    
+    print(f"[HQQ] Loading model from {src}")
+    
+    # Load model and tokenizer
+    model = AutoModelForCausalLM.from_pretrained(
+        src, 
+        torch_dtype=torch.float16,
+        device_map="auto" if torch.cuda.is_available() else None
     )
-    raise NotImplementedError("HQQ quantisation stub: integrate your HQQ workflow here.")
+    tokenizer = AutoTokenizer.from_pretrained(src)
+    
+    # Create HQQ quantization config
+    print(f"[HQQ] Creating HQQ configuration: {bits}-bit, group_size={group_size}")
+    hqq_config = BaseQuantizeConfig(
+        nbits=bits, 
+        group_size=group_size,
+        quant_zero=quant_zero,
+        quant_scale=quant_scale
+    )
+    
+    # Find all linear layers to quantize
+    print("[HQQ] Analyzing model structure...")
+    linear_layers = []
+    for name, module in model.named_modules():
+        if isinstance(module, nn.Linear):
+            linear_layers.append((name, module))
+    
+    print(f"[HQQ] Found {len(linear_layers)} Linear layers")
+    
+    # Apply HQQ quantization to each linear layer
+    print("[HQQ] Applying calibration-free quantization...")
+    model.eval()
+    
+    with torch.no_grad():
+        for name, module in tqdm(linear_layers, desc="HQQ Quantization"):
+            # Get parent module and attribute name
+            parent_name = '.'.join(name.split('.')[:-1])
+            attr_name = name.split('.')[-1]
+            
+            if parent_name:
+                parent = model.get_submodule(parent_name)
+            else:
+                parent = model
+            
+            # Create quantized replacement layer
+            original_dtype = module.weight.dtype
+            original_device = module.weight.device
+            
+            # Create HQQLinear replacement
+            hqq_layer = HQQLinear(
+                linear_layer=module,
+                quant_config=hqq_config,
+                compute_dtype=original_dtype,
+                del_orig=True  # Delete original weights to save memory
+            )
+            
+            # Replace the original layer
+            setattr(parent, attr_name, hqq_layer)
+    
+    print(f"[HQQ] Quantized {len(linear_layers)} layers with calibration-free HQQ")
+    
+    # Save quantized model
+    print(f"[HQQ] Saving quantized model to {dst}")
+    model.save_pretrained(dst, safe_serialization=True)
+    tokenizer.save_pretrained(dst)
+    
+    # Save HQQ metadata for inference loading
+    hqq_metadata = {
+        "nbits": bits,
+        "group_size": group_size,
+        "quant_zero": quant_zero,
+        "quant_scale": quant_scale,
+        "backend": "hqq",
+        "quantized_layers": len(linear_layers)
+    }
+    
+    with open(dst / "hqq_config.json", "w") as f:
+        import json
+        json.dump(hqq_metadata, f, indent=2)
+    
+    # Create metadata
+    metadata = {
+        "method": "HQQ",
+        "weights_bits": bits,
+        "activations_bits": None,
+        "group_size": group_size,
+        "quant_zero": quant_zero,
+        "quant_scale": quant_scale,
+        "backend": "hqq",
+        "seed": seed,
+        "calibration_free": True,
+        "quantized_layers": len(linear_layers)
+    }
+    
+    return dst, metadata
+
+
+def quantize_hqq(src: Path, dst: Path, spec: QuantizationSpec, args: argparse.Namespace) -> HandlerResult:
+    """
+    HQQ: Half-Quadratic Quantization handler.
+    
+    Implements calibration-free weight quantization using standalone HQQ package.
+    """
+    try:
+        from hqq.core.quantize import HQQLinear, BaseQuantizeConfig
+    except ImportError as exc:
+        raise NotImplementedError(
+            "HQQ quantisation requires the `hqq` package. "
+            "Install it with `pip install hqq`."
+        ) from exc
+    
+    # Extract HQQ-specific parameters from spec.extras
+    quant_zero = spec.extras.get("quant_zero", True) if spec.extras else True
+    quant_scale = spec.extras.get("quant_scale", True) if spec.extras else True
+    
+    return quantize_with_hqq(
+        src=src,
+        dst=dst,
+        bits=spec.weights_bits or 4,
+        group_size=spec.group_size or 64,
+        quant_zero=quant_zero,
+        quant_scale=quant_scale,
+        seed=args.seed
+    )
 
 
 def quantize_smoothquant(src: Path, dst: Path, spec: QuantizationSpec, args: argparse.Namespace) -> HandlerResult:
@@ -902,7 +1059,7 @@ def build_parser() -> argparse.ArgumentParser:
     common.add_argument(
         "--calib",
         type=Path,
-        default=Path("Datasets/calibration_prompts.txt"),
+        default=Path("Datasets/calibration_openmath_5samples.txt"),
         help="Calibration prompts file (default: %(default)s).",
     )
     common.add_argument("--bits", type=int, default=4, help="Target weight bits (default: %(default)s).")

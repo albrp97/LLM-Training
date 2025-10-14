@@ -23,6 +23,11 @@ try:
 except ImportError:  # pragma: no cover - optional dependency
     HQQConfig = None  # type: ignore
 
+try:
+    from hqq.core.quantize import HQQLinear  # type: ignore
+except ImportError:  # pragma: no cover - optional dependency
+    HQQLinear = None  # type: ignore
+
 import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
@@ -233,18 +238,26 @@ def load_model_with_quant(model_name: str, quant: QuantContext, kv_cache_dtype: 
             else:
                 raise
     elif method is QuantMethod.HQQ:
-        if HQQConfig is None:
+        # HQQ models are saved with HQQLinear layers already integrated
+        if HQQLinear is None:
             raise RuntimeError(
-                "Transformers build does not expose HQQConfig. Install transformers>=4.44 to load HQQ weights."
+                "HQQ quantized model requires the `hqq` package. "
+                "Install it with `pip install hqq`."
             )
+        # Try loading with kv_cache_dtype first, fall back without it if not supported
         try:
-            hqq_config = HQQConfig.from_pretrained(model_name)
-        except Exception as exc:  # pragma: no cover - optional dependency failure
-            raise RuntimeError(
-                f"Failed to load HQQ configuration from '{model_name}'. "
-                "Ensure `tools/quantize.py run --method hqq` was executed successfully."
-            ) from exc
-        model = AutoModelForCausalLM.from_pretrained(model_name, config=hqq_config, **load_kwargs)
+            model = AutoModelForCausalLM.from_pretrained(model_name, **load_kwargs)
+        except TypeError as e:
+            if "kv_cache_dtype" in str(e) and "kv_cache_dtype" in load_kwargs:
+                # Remove kv_cache_dtype and try again
+                load_kwargs_fallback = {k: v for k, v in load_kwargs.items() if k != "kv_cache_dtype"}
+                model = AutoModelForCausalLM.from_pretrained(model_name, **load_kwargs_fallback)
+            else:
+                raise RuntimeError(
+                    f"Failed to load HQQ quantized model from '{model_name}'. "
+                    "Ensure `tools/quantize.py run --method hqq` was executed successfully. "
+                    f"Error details: {e}"
+                ) from e
     elif method in {QuantMethod.SMOOTH_QUANT, QuantMethod.QUA_ROT}:
         raise RuntimeError(
             f"{method.value} weights require runtime hooks. "
