@@ -1,0 +1,180 @@
+{
+  "study_type": "brecq_post_training_quantization",
+  "generated_at": "2025-10-15T11:50:11.409155",
+  "models_compared": [
+    "base_no_quant",
+    "base_brecq",
+    "nopeft_no_quant",
+    "nopeft_brecq"
+  ],
+  "key_metrics": {
+    "base_no_quant": {
+      "model_name": "Models/Qwen3-0.6B-base",
+      "quantization_method": "Unknown",
+      "total_params": 0,
+      "vram_usage_gb": 1.375,
+      "avg_latency_ms": 0.0,
+      "total_eval_time_s": 0,
+      "datasets": {
+        "test-ai2_arc.parquet": {
+          "metric_type": "accuracy",
+          "value": 50.0,
+          "num_samples": 0,
+          "avg_latency_ms": 0
+        },
+        "test-OpenMathInstruct-2.parquet": {
+          "metric_type": "avg_abs_diff",
+          "value": 2294.642941,
+          "num_samples": 0,
+          "avg_latency_ms": 0
+        },
+        "test-squad_v2.parquet": {
+          "metric_type": "accuracy",
+          "value": 5.0,
+          "num_samples": 0,
+          "avg_latency_ms": 0
+        }
+      }
+    },
+    "base_brecq": {
+      "model_name": "Models/Qwen3-0.6B-base_brecq_w4g64_mix_attn6",
+      "quantization_method": "Unknown",
+      "total_params": 0,
+      "vram_usage_gb": 1.434,
+      "avg_latency_ms": 0.0,
+      "total_eval_time_s": 0,
+      "datasets": {
+        "test-ai2_arc.parquet": {
+          "metric_type": "accuracy",
+          "value": 0.0,
+          "num_samples": 0,
+          "avg_latency_ms": 0
+        },
+        "test-squad_v2.parquet": {
+          "metric_type": "accuracy",
+          "value": 50.0,
+          "num_samples": 0,
+          "avg_latency_ms": 0
+        }
+      }
+    },
+    "nopeft_no_quant": {
+      "model_name": "Models/Qwen3-0.6B-openmath_SFT_NoPeft_NoQuant",
+      "quantization_method": "Unknown",
+      "total_params": 0,
+      "vram_usage_gb": 1.252,
+      "avg_latency_ms": 0.0,
+      "total_eval_time_s": 0,
+      "datasets": {
+        "test-ai2_arc.parquet": {
+          "metric_type": "accuracy",
+          "value": 15.0,
+          "num_samples": 0,
+          "avg_latency_ms": 0
+        },
+        "test-OpenMathInstruct-2.parquet": {
+          "metric_type": "avg_abs_diff",
+          "value": 6.0,
+          "num_samples": 0,
+          "avg_latency_ms": 0
+        },
+        "test-squad_v2.parquet": {
+          "metric_type": "accuracy",
+          "value": 5.0,
+          "num_samples": 0,
+          "avg_latency_ms": 0
+        }
+      }
+    },
+    "nopeft_brecq": {
+      "model_name": "Models/Qwen3-0.6B-openmath_SFT_NoPeft_NoQuant_brecq_w4g64_mix_attn6",
+      "quantization_method": "Unknown",
+      "total_params": 0,
+      "vram_usage_gb": 1.434,
+      "avg_latency_ms": 0.0,
+      "total_eval_time_s": 0,
+      "datasets": {
+        "test-ai2_arc.parquet": {
+          "metric_type": "accuracy",
+          "value": 0.0,
+          "num_samples": 0,
+          "avg_latency_ms": 0
+        },
+        "test-squad_v2.parquet": {
+          "metric_type": "accuracy",
+          "value": 50.0,
+          "num_samples": 0,
+          "avg_latency_ms": 0
+        }
+      }
+    }
+  },
+  "base_model_impact": {
+    "datasets": {
+      "test-ai2_arc.parquet": {
+        "base_value": 50.0,
+        "quant_value": 0.0,
+        "improvement": -50.0,
+        "improvement_pct": -100.0,
+        "metric_type": "accuracy",
+        "better": false
+      },
+      "test-squad_v2.parquet": {
+        "base_value": 5.0,
+        "quant_value": 50.0,
+        "improvement": 45.0,
+        "improvement_pct": 900.0,
+        "metric_type": "accuracy",
+        "better": true
+      }
+    },
+    "summary": {
+      "total_datasets": 2,
+      "improvements": 1,
+      "degradations": 1,
+      "avg_improvement": 400.0,
+      "speed_improvement": 0.0,
+      "vram_reduction": -0.04290909090909087,
+      "param_count_match": true
+    }
+  },
+  "nopeft_model_impact": {
+    "datasets": {
+      "test-ai2_arc.parquet": {
+        "base_value": 15.0,
+        "quant_value": 0.0,
+        "improvement": -15.0,
+        "improvement_pct": -100.0,
+        "metric_type": "accuracy",
+        "better": false
+      },
+      "test-squad_v2.parquet": {
+        "base_value": 5.0,
+        "quant_value": 50.0,
+        "improvement": 45.0,
+        "improvement_pct": 900.0,
+        "metric_type": "accuracy",
+        "better": true
+      }
+    },
+    "summary": {
+      "total_datasets": 2,
+      "improvements": 1,
+      "degradations": 1,
+      "avg_improvement": 400.0,
+      "speed_improvement": 0.0,
+      "vram_reduction": -0.14536741214057503,
+      "param_count_match": true
+    }
+  },
+  "conclusions": {
+    "base_model_winner": "brecq",
+    "nopeft_model_winner": "brecq",
+    "overall_brecq_effectiveness": "positive",
+    "mixed_precision_benefit": "enabled",
+    "quantization_levels": {
+      "mlp": "W4",
+      "attention": "W6"
+    }
+  }
+}
