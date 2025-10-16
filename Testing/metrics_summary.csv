@@ -1,5 +1,6 @@
 model,train_peak_vram_reserved_gb,train_peak_vram_allocated_gb,eval_peak_vram_reserved_gb,eval_peak_vram_allocated_gb,ai2_arc__macro_f1,ai2_arc__latency_mean_s,OpenMathInstruct-2__avg_abs_diff,OpenMathInstruct-2__latency_mean_s,squad_v2__F1,squad_v2__latency_mean_s,OpenMathInstruct-2__accuracy
 Models__Qwen3-0.6B-base,0.0,0.0,1.375,1.28,0.5111,1.7676,2294.642941,7.3468,10.33,0.2334,
+Models__Qwen3-0.6B-base_brecq_w4g64_mix_attn6,,,1.434,1.323,0.0,29.6544,,29.6438,50.0,29.4216,0.0
 Models__Qwen3-0.6B-base_gptq_w4g64,,,1.434,1.323,0.0,29.6305,,29.6095,50.0,29.8376,0.0
 Qwen3-0.6B-base,0.0,0.0,1.375,1.28,0.5111,1.8362,2294.642941,7.3746,10.33,0.2393,
 Qwen3-0.6B-base_awq_w4g128,,,1.434,1.323,0.0,29.3859,,29.8222,50.0,29.5045,0.0
