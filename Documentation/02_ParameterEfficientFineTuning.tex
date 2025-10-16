@@ -1,0 +1,405 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=2.25cm]{geometry}
+
+% Packages
+\usepackage[utf8]{inputenc}
+\usepackage{booktabs}
+\usepackage{amsmath, amssymb}
+\usepackage{siunitx}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{datetime}
+\usepackage{adjustbox}
+\usepackage{float}
+\usepackage{enumitem}
+
+% Metadata
+
+\newdateformat{monthyeardate}{\monthname[\THEMONTH] \THEYEAR}
+\setlength{\tabcolsep}{4pt}
+
+\title{Supervised Fine-Tuning of LLMs with Parameter-Efficient Methods: LoRA, DoRA, and VeRA}
+\author{Alberto Rodero\thanks{Equal contribution} \and Pablo Lobato\footnotemark[1]}
+\date{September 2025}
+
+\sisetup{
+  round-mode=places,
+  round-precision=3,
+  table-number-alignment=center
+}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Large Language Models (LLMs) are increasingly being adapted to specialized tasks through fine-tuning. 
+While full-model fine-tuning offers strong performance, \textbf{it is computationally expensive and difficult to scale}. 
+\textbf{Parameter-Efficient Fine-Tuning (PEFT) techniques}, such as LoRA, DoRA and VeRA, have emerged as practical alternatives. 
+We provide a \textbf{comparative perspective on these techniques, illustrating their trade-offs for practical deployment} of LLMs.
+\end{abstract}
+
+\section{Introduction}
+Large Language Models (LLMs) have become the foundation for many modern applications in natural language processing, powering chatbots, code assistants, search systems and domain-specific solutions. 
+Adapting these models to new tasks often requires fine-tuning. However, \textbf{directly updating billions of parameters is both computationally expensive and difficult to manage in production systems}.
+To address these limitations, \textbf{parameter-efficient fine-tuning (PEFT) methods have emerged}. Instead of modifying all parameters, these approaches \textbf{introduce small trainable components} into the model architecture, enabling adaptation with minimal additional cost. The field is rapidly evolving, with new methods appearing frequently and existing ones being refined for stability, scalability, and precision. 
+This document focuses on \textbf{Supervised Fine-Tuning (SFT)} with LoRA and its extensions (DoRA, VeRA), highlighting their conceptual design, trade-offs and practical usage. Beyond these methods, other promising approaches include \textbf{AdaLoRA}\cite{adaLora} (adaptive rank adjustment) and \textbf{QLoRA}\cite{qLora} (quantization-aware LoRA). 
+
+We focus on \textbf{LoRA and its modern derivatives, DoRA and VeRA}, as they are among the most influential, empirically validated, and widely adopted PEFT strategies in current LLM research and practice.
+
+
+
+\section{Background}
+\subsection{Supervised Fine-Tuning (SFT)} 
+Unlike pretraining, which focuses on learning general language representations, \textbf{Supervised Fine-Tuning (SFT) is the process of aligning an LLM with specific tasks} such as instruction following, classification or summarization, this process uses a dataset with labeled examples.
+SFT typically involves:
+\begin{itemize}[leftmargin=1.5em]
+    \item Using a \textbf{pretrained LLM as a frozen initialization}.
+    \item Training on a \textbf{curated dataset of input-output pairs}.
+    \item Minimizing a supervised loss (e.g., cross-entropy) over the model predictions.
+\end{itemize}
+
+\subsubsection{Challenges of Full Fine-Tuning}
+Although full fine-tuning has been widely used and has proved his efficacy, \textbf{applying it directly to LLMs introduces several difficulties}:
+
+\begin{itemize}[leftmargin=1.5em]
+    \item \textbf{Computational Cost:} Updating billions of parameters requires \textbf{significant GPU memory and training time}, often accessible only to large organizations.
+    \item \textbf{Storage Overhead:} Each fine-tuned variant of a model \textbf{must be stored in full}, leading to inefficient use of storage when multiple task-specific versions are needed.
+    \item \textbf{Deployment Complexity:} Switching between fully fine-tuned models for different tasks \textbf{complicates serving pipelines} and increases infrastructure requirements.
+    \item \textbf{Limited Flexibility:} Once a model is fully fine-tuned, adapting it to additional tasks often \textbf{requires repeating the process from scratch}.
+    \item \textbf{Catastrophic Forgetting:} Fine-tuning on new tasks without special care can \textbf{overwrite previously learned capabilities}, degrading performance on earlier tasks.
+\end{itemize}
+
+
+These challenges motivated the development of \textbf{PEFT methods}, which provide a \textbf{more scalable, modular, and flexible way} to adapt LLMs for diverse applications.
+
+\subsection{Parameter-Efficient Fine-Tuning (PEFT)}
+Parameter-Efficient Fine-Tuning (PEFT) methods were introduced to mitigate full-finetuning issues, \textbf{allowing the adaptation of LLMs without retraining them entirely}.
+Instead of storing and training billions of weights for every downstream task, PEFT \textbf{introduces lightweight modules or modifies a small subset of parameters}, significantly reducing training cost and storage requirements.
+Existing approaches include:
+\begin{itemize}[leftmargin=1.5em]
+    \item \textbf{Adapter layers:} Small neural modules inserted into each Transformer block \cite{houlsby2019parameter}. While effective, they \textbf{increase inference latency}.
+    \item \textbf{Prompt-based tuning:} Optimizing embeddings or continuous prompts \cite{li2021prefix}. These methods can \textbf{reduce effective sequence length} and are harder to optimize for some tasks.
+    \item \textbf{LoRA and extensions:} Methods such as LoRA \cite{hu2021LoRA}, DoRA \cite{liu2024dora} and VeRA \cite{kopiczko2024vera} apply low-rank or structured updates to model weights. These approaches \textbf{achieve strong efficiency-accuracy trade-offs} and have become the \textbf{de facto standard} for parameter-efficient fine-tuning of LLMs.
+
+\end{itemize}
+
+\subsubsection{Low-Rank Adaptation (LoRA)}
+LoRA adds a few small trainable modules to an existing model instead of retraining all its weights.
+This makes \textbf{adapting large models to new tasks faster and cheaper} while keeping their original capabilities.
+
+A neural network contains many dense layers which perform matrix multiplication. The weight
+matrices in these layers typically have full-rank. When adapting to a specific task, pre-trained language models have a \textbf{low "intrinsic dimension"}\cite{dimension} and can be fine-tuned successfully despite a random projection to a smaller subspace. 
+Based in this idea, instead of updating all parameters, LoRA \textbf{freezes the pretrained weights and injects trainable low-rank matrices} into selected linear transformations, typically in the attention mechanism.
+
+During adaptation, a weight matrix $W_0 \in \mathbb{R}^{d \times k}$ is modified as:
+\[
+W = W_0 + \Delta W, \quad \Delta W = BA,
+\]
+where $B \in \mathbb{R}^{d \times r}$ and $A \in \mathbb{R}^{r \times k}$ with $r \ll \min(d,k)$.  
+Here, $W_0$ remains frozen, and only $A$ and $B$ are trained. This decomposition \textbf{constrains the updates to a low-rank space, drastically reducing the number of trainable parameters}.
+
+LoRA provides several practical benefits:
+\begin{itemize}[leftmargin=1.5em]
+    \item \textbf{Parameter Reduction:} LoRA \textbf{reduces the number of trainable parameters} while maintaining performance.
+    \item \textbf{No Inference Overhead:} The low-rank updates can be \textbf{merged with the frozen weights at deployment, ensuring zero additional latency}.
+    \item \textbf{Modular Adaptation:} Multiple downstream tasks can be supported by \textbf{swapping only the LoRA matrices}, rather than entire model checkpoints.
+    \item \textbf{Training Throughput:} LoRA \textbf{improves training speed and lowers memory usage}.
+\end{itemize}
+
+While LoRA is widely adopted, it has some limitations:
+\begin{itemize}[leftmargin=1.5em]
+    \item \textbf{Limited Expressiveness:} The low-rank constraint can \textbf{restrict the model's ability to capture highly complex task-specific patterns} compared to full fine-tuning.
+    \item \textbf{Layer Sensitivity:} Performance \textbf{depends strongly on where LoRA is applied} (e.g., $W_q$, $W_v$), requiring experimentation to find the best configuration.
+\end{itemize}
+
+\subsubsection{Weight-Decomposed Low-Rank Adaptation (DoRA)}
+DoRA fine-tunes models more precisely by \textbf{separating how strongly and in what direction each weight changes}.
+This delivers \textbf{finer control and improved accuracy over LoRA}, especially for complex reasoning or multimodal tasks.
+
+While LoRA has proven effective for efficient fine-tuning, there remains a \textbf{noticeable accuracy gap compared to full fine-tuning} (FT). 
+The DoRA method \cite{liu2024dora} (Weight-Decomposed Low-Rank Adaptation) addresses this by \textbf{reparameterizing pretrained weights into two components: magnitude and direction}. 
+This decomposition enables a \textbf{finer-grained adaptation process} that more closely mirrors the behavior of full fine-tuning.
+
+A pretrained weight matrix $W \in \mathbb{R}^{d \times k}$ can be expressed as:
+\[
+W = m \cdot \frac{V}{\|V\|_c},
+\]
+where $m$ is a magnitude vector and $V$ represents the directional component, with normalization across columns.  
+DoRA \textbf{freezes the pretrained initialization, keeps $m$ trainable}, and, because the directional component has a large number of parameters, \textbf{applies LoRA-style low-rank updates to the directional part}:
+\[
+W' = m \cdot \frac{W_0 + BA}{\|W_0 + BA\|_c}.
+\]
+Here, $A \in \mathbb{R}^{r \times k}$ and $B \in \mathbb{R}^{d \times r}$ define low-rank matrices ($r \ll \min(d,k)$), trained in the same way as in LoRA.
+
+\begin{itemize}[leftmargin=1.5em]
+    \item \textbf{Learning Capacity:} By decoupling magnitude and direction, DoRA \textbf{better replicates the update patterns of full fine-tuning}, enabling more nuanced adaptation than LoRA.
+    \item \textbf{Efficiency:} Despite its increased expressiveness, DoRA introduces \textbf{only a marginal increase in trainable parameters} compared to LoRA and \textbf{does not add inference overhead}.
+    \item \textbf{Closing the Fine-Tuning Gap:} Empirical results show that DoRA \textbf{significantly narrows the performance gap} between LoRA and full fine-tuning, particularly on reasoning and multimodal benchmarks.
+% when mentioning empirical or actual data alway reference it
+\end{itemize}
+
+Although DoRA improves accuracy and stability, it also introduces new considerations:
+\begin{itemize}[leftmargin=1.5em]
+    \item \textbf{Implementation Complexity:} The decomposition of weights and normalization steps \textbf{increase code complexity} and potential integration issues in existing frameworks.
+    \item \textbf{Marginal Gains for Simple Tasks:} On straightforward fine-tuning tasks, DoRA's added sophistication \textbf{may not yield significant improvements} over LoRA.
+\end{itemize}
+
+\subsubsection{Vector-Based Random Matrix Adaptation (VeRA)}
+VeRA simplifies fine-tuning by \textbf{sharing the same random adapter structure across all layers and learning only small scaling vectors}.
+It enables \textbf{ultra-lightweight, scalable customization} of models across many users or applications with minimal storage cost.
+
+LoRA and DoRA reduce fine-tuning costs but \textbf{still require storing distinct low-rank adapters per task}, which becomes inefficient when scaling across many users or tasks. 
+VeRA \cite{kopiczko2024vera} (Vector-based Random Matrix Adaptation) \textbf{further minimizes trainable parameters} by introducing \textbf{frozen, shared random matrices across all adapted layers}, with small trainable scaling vectors.
+
+Given a pretrained weight matrix $W_0 \in \mathbb{R}^{m \times n}$, LoRA models the update as:
+\[
+\Delta W = BA,
+\]
+with $A \in \mathbb{R}^{r \times n}, B \in \mathbb{R}^{m \times r}$ trained per layer.  
+In contrast, VeRA \textbf{freezes a single pair of random matrices $A, B$, shared across all layers} and introduces diagonal scaling matrices $\Lambda_b, \Lambda_d$ parameterized by trainable vectors $b, d$:
+\[
+\Delta W = \Lambda_b B \Lambda_d A.
+\]
+This design \textbf{drastically reduces the number of trainable parameters}, since only the vectors $b, d$ are optimized.
+
+\begin{itemize}[leftmargin=1.5em]
+    \item \textbf{Extreme Parameter Efficiency:} VeRA achieves \textbf{10--100$\times$ fewer trainable parameters than LoRA} while maintaining comparable accuracy.
+    \item \textbf{No Extra Inference Cost:} Like LoRA, VeRA \textbf{merges updates into the base weights, introducing no runtime latency}.
+    \item \textbf{Scalability:} Because random matrices are \textbf{shared and reproducible from seeds}, VeRA is particularly suited for \textbf{large-scale personalization and multi-task deployment}.
+\end{itemize}
+
+While VeRA achieves extreme parameter efficiency, it comes with trade-offs:
+\begin{itemize}[leftmargin=1.5em]
+    \item \textbf{Reduced Task-Specific Capacity:} Sharing random matrices across layers \textbf{may limit adaptability for highly specialized or complex domains}.
+    \item \textbf{Lower Maturity:} VeRA is a newer method and its \textbf{integration in mainstream frameworks is still limited} compared to LoRA.
+\end{itemize}
+
+\section{Motivation \& Context}
+
+\paragraph{Our aim.}
+Our objective is to provide a \textbf{deployment-oriented, empirically grounded comparison} of supervised fine-tuning strategies—full fine-tuning and parameter-efficient methods (LoRA, DoRA, VeRA)—on a common 0.6B base, contrasted against a larger untuned baseline. We \textbf{quantify trade-offs across three axes (efficacy, efficiency, and memory)} using task scores, end-to-end latency, and both training and inference VRAM. We characterize rank scaling within each method, assess cross-task transfer and robustness, and surface \textbf{Pareto-optimal configurations} under realistic resource constraints. The goal is \textbf{actionable guidance}: which method to choose when training memory is scarce or abundant, whether adapters can approach or surpass full fine-tuning or a larger base, and which configurations minimize serving cost without sacrificing target-level performance.
+
+\paragraph{Key questions.}
+\begin{itemize}
+\item \textbf{Q1:} Which method delivers the best in-domain efficacy–efficiency balance?
+\item \textbf{Q2:} Do adapters approach or surpass full fine-tuning and larger base models across tasks?
+\item \textbf{Q3:} Does rank materially change the efficacy–latency–memory trade-off within each method?
+\item \textbf{Q4:} Cross-task transfer: which method is most robust and least prone to catastrophic forgetting?
+\item \textbf{Q5:} Which configurations minimize inference costs?
+\item \textbf{Q6:} Under training VRAM constraints, which method offers the best accuracy per memory spent?
+\item \textbf{Q7:} If VRAM constraints force adapters, is fine-tuning still worth it overall?
+\item \textbf{Q8:} With abundant VRAM, does full fine-tuning dominate, or do adapters keep a speed/serve edge?
+\item \textbf{Q9:} Which configurations are Pareto-optimal over efficacy, latency, and memory?
+\end{itemize}
+
+\section{Experimental Setup}
+
+\paragraph{Models.}
+We study \textbf{Qwen3-0.6B}\cite{qwen} under \textbf{full fine-tuning (NoPEFT)} and three PEFT methods—\textbf{LoRA}, \textbf{DoRA}, \textbf{VeRA}—and compare against \textbf{Qwen3-0.6B (base)} and \textbf{Qwen3-1.7B (base)}. \textbf{No quantization} is used.
+
+\paragraph{PEFT configurations.}
+LoRA/DoRA use ranks $r\in\{256,512\}$; VeRA uses $r\in\{512,1024\}$. Adapters target standard attention projections; DoRA applies magnitude–direction reparameterization; VeRA shares frozen random bases with trainable vectors. Adapters are merged for evaluation.
+
+\paragraph{Datasets (train $\rightarrow$ eval).}
+We fine-tune on \textbf{OpenMathInstruct-2}\cite{openmath} and \textbf{SQuAD v2}\cite{squad} with \textbf{1{,}000 training samples} per dataset. For evaluation, we use \textbf{ARC}\cite{arc} (4-way MCQ), \textbf{OpenMathInstruct-2} (numeric), and \textbf{SQuAD v2} (extractive QA), \textbf{200 samples each}. This setup stresses \textbf{knowledge transfer} across task types.
+
+\paragraph{Framework \& training.}
+Implementation uses \textbf{Hugging Face Transformers}\cite{huggingfaceTransformers}, \textbf{TRL} (SFT), and \textbf{PEFT} in \texttt{bfloat16} on CUDA. Data are formatted as simple chat-style SFT (single input $\rightarrow$ single target). Global hyperparameters are shared across runs (fixed learning rate, 1 epoch, effective batch size $=8$ via gradient accumulation, gradient checkpointing). \textit{For full hyperparameter details, please refer to the code.}
+
+\paragraph{Evaluation protocol \& metrics.}
+Decoding is deterministic (\texttt{do\_sample=False}), with “\textbf{reasoning}” \textbf{turned off} (no chain-of-thought prompts, no tool use, no special reasoning modes) and a generous \texttt{max\_new\_tokens}. We report \textbf{ARC macro-F1}, \textbf{OpenMath AbsDiff} (lower is better), and \textbf{SQuAD F1}. \textbf{Latency} is wall-clock per \texttt{generate()} call. \textbf{VRAM} is recorded at training and evaluation as \emph{resident} and \emph{all-allocated} peaks.
+
+\subsection{Known Limitations \& External Validity}
+
+\noindent \textbf{Single-seed, single-epoch snapshots} on \textbf{small evaluation sets} (200/item) mean wider uncertainty; we did not run multi-seed or hyperparameter/prompt sweeps. Our metrics prioritize correctness (F1/AbsDiff) over \textbf{end-to-end utility} (calibration, abstention, cost-per-success) and exclude pipeline factors like retrieval latency in RAG. \textbf{We use small models due to hardware limits} (0.6B FT; 1.7B base), so patterns \textbf{may not replicate at larger scales}. The study is \textbf{architecture-specific to Qwen}; other backbones (e.g., Llama, Mistral, Mixtral) \textbf{may respond differently} to PEFT/FT choices. Low-level implementation details (kernel fusion, allocator behavior, adapter merging) can introduce \textbf{systematic latency/VRAM bias}. Finally, dataset subsampling and formatting choices can shift distributions; treat findings as \textbf{comparative patterns within this recipe}, not universal claims.
+
+\section{Results by Question \& Interpretation}
+
+\begin{table}[H]
+\centering
+\caption{Full results across tasks with VRAM stats. Lower is better for Math AbsDiff and VRAM. Latency in seconds. Best \emph{efficacy}, \emph{efficiency} (latency), and \emph{VRAM} within each training block are \textbf{bolded}.}
+\label{tab:full_with_vram}
+\footnotesize
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{lll rrrrr r rr r rr}
+\toprule
+ & & & \multicolumn{4}{c}{\textbf{VRAM (GB)}} & \multicolumn{2}{c}{\textbf{ARC}} & \multicolumn{2}{c}{\textbf{OpenMath}} & \multicolumn{2}{c}{\textbf{SQuAD v2}} \\
+\cmidrule(lr){4-7}\cmidrule(lr){8-9}\cmidrule(lr){10-11}\cmidrule(lr){12-13}
+\textbf{Base} & \textbf{PEFT} & \textbf{$r$} &
+\textbf{Train Res.} & \textbf{Train All.} & \textbf{Eval Res.} & \textbf{Eval All.} &
+\textbf{F1 $\uparrow$} & \textbf{Lat $\downarrow$} &
+\textbf{AbsDiff $\downarrow$} & \textbf{Lat $\downarrow$} &
+\textbf{F1 $\uparrow$} & \textbf{Lat $\downarrow$} \\
+\midrule
+\multicolumn{13}{l}{\textit{Trained on OpenMath}} \\
+Qwen3-0.6B & NoPEFT & --   & 5.688 & 5.346 & \textbf{1.428} & \textbf{1.329} & 0.5171 & \textbf{0.0593} & \textbf{16{,}540.004} & \textbf{0.0466} & 7.40 & 0.2291 \\
+Qwen3-0.6B & DoRA   & 256  & 5.797 & 4.448 & 2.754 & 2.523 & 0.5056 & 0.8938 & 23{,}798.036 & 1.5447 & 8.48 & 0.2032 \\
+Qwen3-0.6B & DoRA   & 512  & 5.630 & 5.685 & 2.754 & 2.523 & 0.5032 & 0.9251 & 23{,}675.495 & 1.5422 & 8.48 & 0.2008 \\
+Qwen3-0.6B & LoRA   & 256  & 5.855 & 4.446 & 2.754 & 2.523 & 0.4999 & 0.8614 & 23{,}919.016 & 1.4959 & 8.48 & \textbf{0.1987} \\
+Qwen3-0.6B & LoRA   & 512  & 5.693 & 5.676 & 2.754 & 2.523 & 0.5039 & 0.8876 & 23{,}913.011 & 1.5027 & 8.48 & 0.2003 \\
+Qwen3-0.6B & VeRA   & 1024 & \textbf{4.959} & 3.366 & 2.754 & 2.523 & \textbf{0.5207} & 0.9309 & 24{,}974.605 & 5.3566 & \textbf{9.40} & 0.2057 \\
+Qwen3-0.6B & VeRA   & 512  & 4.967 & \textbf{3.357} & 2.754 & 2.523 & \textbf{0.5207} & 0.9414 & 24{,}976.899 & 5.3617 & \textbf{9.40} & 0.2020 \\
+\midrule
+\multicolumn{13}{l}{\textit{Trained on SQuAD v2}} \\
+Qwen3-0.6B & NoPEFT & --   & \textbf{8.807} & 6.248 & \textbf{1.428} & \textbf{1.329} & 0.4542 & \textbf{0.1934} & \textbf{22{,}996.637} & \textbf{0.2208} & \textbf{27.95} & 0.2216 \\
+Qwen3-0.6B & DoRA   & 256  & 9.337 & 5.463 & 2.824 & 2.589 & 0.5065 & 0.2853 & 23{,}700.784 & 1.8388 & 9.83 & 0.2213 \\
+Qwen3-0.6B & DoRA   & 512  & 10.353 & 6.559 & 2.824 & 2.589 & 0.5065 & 0.2911 & 23{,}577.992 & 1.6392 & 9.59 & \textbf{0.1823} \\
+Qwen3-0.6B & LoRA   & 256  & 9.657 & 5.466 & 2.824 & 2.589 & 0.5024 & 0.2933 & 23{,}771.658 & 1.9503 & 9.52 & 0.1993 \\
+Qwen3-0.6B & LoRA   & 512  & 10.035 & 6.556 & 2.824 & 2.589 & 0.5031 & 0.3143 & 23{,}772.109 & 3.0125 & 9.40 & 0.1940 \\
+Qwen3-0.6B & VeRA   & 1024 & 9.403 & 4.378 & 2.754 & 2.523 & 0.4954 & 0.9454 & 24{,}840.634 & 5.3053 & 9.40 & 0.2040 \\
+Qwen3-0.6B & VeRA   & 512  & 9.025 & \textbf{4.369} & 2.754 & 2.523 & \textbf{0.5207} & 0.3135 & 24{,}840.733 & 5.3537 & 9.40 & 0.1963 \\
+\midrule
+\multicolumn{13}{l}{\textit{Base models (no fine-tuning)}} \\
+Qwen3-0.6B & Base   & --   & --    & --    & 1.486 & 1.329 & 0.4932 & \textbf{1.1333} & 24{,}843.380 & \textbf{6.2118} & 10.07 & \textbf{0.2357} \\
+Qwen3-1.7B & Base   & --   & --    & --    & 3.871 & 3.427 & \textbf{0.7986} & 3.2897 & \textbf{742.251} & 12.2900 & \textbf{30.36} & 0.2828 \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{table}
+
+\subsection*{Q1. Which method delivers the best in-domain efficacy–efficiency balance?}
+\textbf{Full fine-tuning (NoPEFT) is the in-domain winner.}
+\begin{itemize}
+  \item On \textit{OpenMath} (in-domain), NoPEFT reduces error by \textbf{30.1\%} vs the best adapter and cuts latency by \textbf{96.9\%}. On \textit{SQuAD}, NoPEFT lifts F1 by \textbf{+191.4\%} vs the best adapter, with a \textbf{+21.6\%} latency increase relative to the fastest adapter; inference VRAM remains \textbf{48--49\%} lower than adapters.
+\end{itemize}
+\textbf{Takeaway:} Prefer NoPEFT for in-domain targets when training memory allows; adapters underperform on both quality and (often) speed in this setup.
+
+\subsection*{Q2. Do adapters approach or surpass full fine-tuning and larger base models across tasks?}
+\textbf{No—adapters fall short of both full FT and the larger base.}
+\begin{itemize}
+  \item \textbf{Vs. full FT.} In-domain \textit{OpenMath}, adapters have \textbf{+43.1\%} higher error than NoPEFT; in-domain \textit{SQuAD}, adapter F1 is lower by \textbf{--66\%}.
+  \item \textbf{Vs. larger base.} The 1.7B base beats 0.6B adapters by \textbf{+57.7\%} ARC F1, \textbf{--96.9\%} OpenMath error, and \textbf{+208.9\%} SQuAD F1.
+  \item \textbf{Interpretation.} Adapters restrict updates to a low-rank subspace and limited sites, so they cannot reconfigure global representations or calibration as fully as full FT; VeRA further reduces layer-specific capacity via shared bases. The larger base starts with substantially more representational capacity and stronger priors, which adapters on a smaller base cannot compensate for in single-task SFT.
+\end{itemize}
+\textbf{Takeaway:} Use adapters for modularity or constraints, not to exceed full FT or a larger base on quality.
+
+\subsection*{Q3. Does rank materially change the efficacy–latency–memory trade-off within each method?}
+\textbf{Not materially in these runs.}
+\begin{itemize}
+  \item Within-method changes across ranks yield score shifts typically within \textbf{$\leq$1–2\%} and latency differences within \textbf{$\leq$1\%} (e.g., \textit{OpenMath} LoRA error varies by \textbf{0.03\%}, latency by \textbf{0.5\%}).
+  \item \textbf{Interpretation.} Small ranks already capture the useful subspace; extra rank adds redundant capacity, while inference cost is dominated by the frozen backbone (not the adapters), and training memory is mostly activations/optimizer states—so higher rank contributes little to either accuracy or cost.
+\end{itemize}
+\textbf{Takeaway:} Pick rank for engineering stability or slight VRAM nuances; do not expect large gains from rank alone.
+
+\subsection*{Q4. Cross-task transfer: which method is most robust and least prone to catastrophic forgetting?}
+\textbf{Adapters are more stable; full FT swings larger (both gains and losses).}
+\begin{itemize}
+  \item \textit{OpenMath}\,$\rightarrow$\,\textit{SQuAD}: NoPEFT drops \textbf{--26.5\%} vs 0.6B base, while adapters sit \textbf{--2.4\%} to \textbf{--6.7\%}. \textit{SQuAD}\,$\rightarrow$\,\textit{ARC}: NoPEFT falls \textbf{--7.9\%}. \textit{SQuAD}\,$\rightarrow$\,\textit{OpenMath}: NoPEFT improves error by \textbf{+7.4\%}.
+  \item \textbf{Interpretation.} Full FT magnifies specialization (bigger in-domain gains and bigger OOD shifts). Adapters constrain drift, mitigating forgetting but also limiting positive transfer.
+\end{itemize}
+\textbf{Takeaway:} For single-task SFT with multi-task use, adapters are safer; full FT is higher risk/higher reward.
+% Aclarar OOD
+
+\subsection*{Q5. Which configurations minimize inference costs?}
+\textbf{0.6B + NoPEFT is generally cheapest to serve for a given quality.}
+\begin{itemize}
+  \item Versus adapters, NoPEFT reduces eval VRAM by \textbf{48--49\%}. In \textit{OpenMath}-trained models, NoPEFT also cuts latency by \textbf{96.9\%} (task-internal) and by \textbf{93.1\%} on ARC. In \textit{SQuAD}-trained models, one adapter is faster on SQuAD by \textbf{21.6\%} but with \textbf{--66\%} F1 vs NoPEFT.
+  \item Versus base models. Compared to the 0.6B base, NoPEFT lowers latency by \textbf{--94.8\%} (ARC), \textbf{--99.3\%} (OpenMath), and \textbf{--2.8\% to --6.0\%} (SQuAD), with \textbf{VRAM at parity} (eval-all). Versus the 1.7B base, NoPEFT reduces eval VRAM by \textbf{--61.2\%} and latency by \textbf{--98.2\%} (ARC), \textbf{--99.6\%} (OpenMath), and \textbf{--19--22\%} (SQuAD).
+  \item \textbf{Interpretation.} The fully tuned 0.6B serves on the plain dense path with fewer parameters and activations, minimizing memory traffic and kernel count. Adapters introduce minor overhead when not fully fused and, in this setting, do not offset it with higher accuracy; the larger base inflates compute and activations, driving higher latency and memory regardless of optimizations.
+\end{itemize}
+\textbf{Takeaway:} For serving cost at target accuracy, favor full FT on the small base in this setting.
+
+\subsection*{Q6. Under training VRAM constraints, which method offers the best accuracy per memory spent?}
+\textbf{VeRA maximizes feasibility at tight memory; LoRA/DoRA trade modest accuracy gains for noticeably more VRAM; full FT wins if memory allows.}
+\begin{itemize}
+  \item \textit{OpenMath} training: VeRA uses \textbf{--30--41\%} less Train-All VRAM than LoRA/DoRA and \textbf{--37.2\%} vs NoPEFT, but its error is \textbf{+51.0\%} higher than NoPEFT and \textbf{+4.3--5.6\%} higher than LoRA/DoRA. \textit{SQuAD} training: VeRA uses \textbf{--25\%} less Train-All than LoRA/DoRA and \textbf{--43\%} vs NoPEFT, with F1 only \textbf{--1.3--4.6\%} below LoRA/DoRA yet \textbf{--66.4\%} vs NoPEFT.
+  \item \textbf{Interpretation.} When memory is the bottleneck, VeRA’s shared random bases minimize trainable state; small accuracy losses vs LoRA/DoRA may be acceptable to fit strict caps, but full FT still delivers the best accuracy per GPU if you can allocate the extra VRAM.
+\end{itemize}
+\textbf{Takeaway:} \emph{Hard cap} $\Rightarrow$ VeRA; \emph{slightly relaxed} $\Rightarrow$ LoRA/DoRA; \emph{no cap} $\Rightarrow$ NoPEFT.
+
+\subsection*{Q7. If VRAM constraints force adapters, is fine-tuning still worth it overall?}
+\textbf{It depends on the task: adapters may be worthwhile for numeracy/MCQ (speed gains with modest accuracy lift), but generally not for extractive QA (accuracy loss despite speed).}
+\begin{itemize}
+  \item \textbf{OpenMath} Versus the 0.6B base, adapter SFT reduces error by \textbf{--3.7\% to --4.7\%} and cuts latency by \textbf{--75.9\% to --76.6\%}. However, serving VRAM increases by \textbf{+90\%} (Eval-All).
+  \item \textbf{SQuAD} Versus the 0.6B base, adapter SFT \emph{reduces} F1 by \textbf{--2.4\% to --6.7\%} while latency improves \textbf{--6.2\% to --23.0\%}; serving VRAM increases by \textbf{+95\%} (Eval-All).
+  \item \textbf{Is it worth the full process?} 
+  \begin{itemize}
+    \item \emph{Math:} If you cannot do full FT and you need substantially faster inference with a measurable accuracy lift, the \textbf{small accuracy gain} paired with a \textbf{large latency drop} can justify the data curation, adapter training, and hosting—especially when user-facing throughput or cost per request dominates. 
+    \item \emph{SQuAD:} Given \textbf{accuracy declines} and only modest-to-moderate latency gains, the additional pipeline complexity (data prep, training, model ops) typically \textbf{does not} pay off; prefer the base (or full FT / larger base) for extractive QA quality.
+  \end{itemize}
+  \item \textbf{Interpretation.} Adapters recover some numeracy and decision boundaries under tight memory (good for Math/MCQ), but they under-adapt span calibration and answer selection needed for extractive QA, so quality dips even if decoding is slightly faster. The pronounced latency differences across tasks—particularly the \textbf{--75.9\%} reduction on OpenMath vs \textbf{--6.2\% to --23.0\%} on SQuAD when using adapters—may reflect transfer of generation style: OpenMath fine-tuning teaches concise numeric outputs, which carry over to ARC's short MCQ responses, whereas SQuAD-tuned models learn longer extractive spans that persist across evaluations.
+\end{itemize}
+\textbf{Takeaway:} Under adapter-only budgets, Math benefits justify the effort when latency is critical; for SQuAD-like QA, the end-to-end cost rarely pencils out without full FT or a larger base.
+
+\subsection*{Q8. With abundant VRAM, does full fine-tuning dominate, or do adapters keep a speed/serve edge?}
+\textbf{Full FT dominates on quality and typically on speed/memory; adapter “speed wins” come with large quality losses.}
+\begin{itemize}
+  \item In-domain \textit{OpenMath}, NoPEFT cuts error by \textbf{--30.8--33.8\%} vs adapters and latency by \textbf{--96.9\%}. In-domain \textit{SQuAD}, NoPEFT boosts F1 by \textbf{+184--197\%} vs adapters; one adapter is faster by \textbf{--17.7--21.6\%} latency but at \textbf{--66\%} F1. Eval VRAM for NoPEFT is \textbf{--48--49\%} vs adapters.
+  \item \textbf{Interpretation.} Once memory is no longer binding, unconstrained updates reconfigure the full representation and serve efficiently (merged weights), while adapters retain structural limits and minor runtime overhead that do not translate into better end-to-end efficiency at competitive quality.
+\end{itemize}
+\textbf{Takeaway:} With ample VRAM, choose NoPEFT; adapter “speed edges” are not competitive at matched accuracy.
+
+\subsection*{Q9. Which configurations are Pareto-optimal over efficacy, latency, and memory?}
+A configuration is \textbf{Pareto-optimal} if no other configuration improves at least one metric (efficacy $\uparrow$, latency $\downarrow$, memory $\downarrow$) without worsening another.
+\textbf{Three clear fronts emerge: (i) maximum quality, (ii) best small-model serve, and (iii) latency extreme for SQuAD.}
+\begin{itemize}
+  \item \textbf{Maximum quality.} The 1.7B base is Pareto on efficacy across tasks (ARC F1 \textbf{+61.9\%} vs 0.6B base; OpenMath error \textbf{--97.0\%}; SQuAD F1 \textbf{+201.6\%}), albeit with much higher latency and memory.
+  \item \textbf{Best small-model serve.} For each training block, 0.6B NoPEFT is Pareto due to jointly low latency and eval VRAM with strong efficacy (e.g., \textit{OpenMath} NoPEFT: \textbf{--96.9\%} latency and \textbf{--48--49\%} eval VRAM vs adapters; \textit{SQuAD} NoPEFT: much higher F1 with minimal memory).
+  \item \textbf{Latency extreme (SQuAD).} A SQuAD adapter achieves the lowest latency (\textbf{--17.7--21.6\%} vs NoPEFT) but is not dominated only because of speed; it pays a \textbf{--66\%} F1 penalty and higher eval VRAM, so it is a niche point on the front.
+\end{itemize}
+\textbf{Takeaway:} Deployment choice reduces to three Pareto archetypes: \emph{bigger-is-better} (1.7B), \emph{fast-cheap-strong} (0.6B NoPEFT), or \emph{speed-at-any-cost} (SQuAD adapter).
+
+
+\section{Conclusions \& Takeaways}
+
+\textit{We summarize two complementary views: (i) technical takeaways that guide modeling choices, and (ii) practical conclusions for solution design.}
+
+
+\begin{itemize}
+  \item \textbf{Start with small + full FT.} A well-tuned small model consistently delivered the best balance of quality, latency, and serving memory. As a default playbook, begin with the smallest viable base and do full SFT before considering complexity.
+
+  \item \textbf{Adapters are a constraint tool, not a quality tool.} LoRA/DoRA/VeRA are excellent when training VRAM is the bottleneck or when you need modular hot-swappable domains. \textbf{They did not close the quality gap to full FT} or to a larger base in our setting.
+
+  \item \textbf{Rank is a low-leverage knob.} Within a method family, changing rank rarely moved the overall efficacy–latency–memory trade-off. Prioritize stability, integration ease, and VRAM fit over chasing rank gains.
+
+  \item \textbf{Task dictates adapter value.} Under constraints, adapters helped for numeracy/MCQ; they were far less compelling for extractive QA. Plan method choice by task type, not just by hardware limits.
+
+  \item \textbf{When VRAM is abundant, go full FT.} Once training memory isn’t binding, unconstrained updates win on quality and typically serve efficiently after merging; adapter “speed edges” didn’t hold at comparable accuracy.
+
+  \item \textbf{Mind forgetting vs transfer.} Full FT amplifies both upside (positive transfer) and downside (forgetting). If you need cross-task robustness, consider multi-task/rehearsal SFT, lightweight regularization, or per-task adapters with routing.
+
+  \item \textbf{VeRA for hardest caps; LoRA/DoRA when feasible; full FT if possible.} As a capacity ladder: VeRA (fits strictest train VRAM), then LoRA/DoRA, then full FT. Move up only when the quality bar or product SLOs demand it.
+
+  \item \textbf{Scaling decision rule.} If small+full FT fails your quality bar after reasonable data/decoding work, \emph{then} consider scaling the base; otherwise you pay latency and memory costs without clear product upside.
+\end{itemize}
+
+\subsection*{Practical conclusions}
+\noindent \textbf{Fine-tuning can unlock clear product wins—higher task accuracy, tighter formatting, and more predictable behavior—} but it is also \textbf{an end-to-end investment} that requires data curation, training/serving engineering, and continuous evaluation. In our setting, \textbf{small + full fine-tuning offers the best overall balance} of quality, latency, and serving cost, and yields a single, simple artifact to deploy (often faster after weight merging). \textbf{Treat fine-tuning as a product decision anchored to SLOs (Service Level Objectives: accuracy, latency, cost)}, not as a default modeling reflex.
+
+\medskip
+\noindent \textbf{Choose methods by constraint and by task.} \textbf{Adapters (LoRA/DoRA/VeRA) are best used to satisfy constraints}—tight training VRAM, hot-swappable domains, or multi-tenant personalization—\textbf{not to chase peak quality}. In our results they did not match full FT or a larger base. \textbf{Task type matters:} for numeracy/MCQ (e.g., structured scoring, eligibility checks, simple decisioning) adapters can be worthwhile under constraints; \textbf{for extractive QA and RAG pipelines (document question answering, policy lookup, support KB search), full FT—or a larger base when needed—more reliably reaches the accuracy bar.}
+
+
+\begin{thebibliography}{99}
+
+\bibitem{adaLora} Qingru Zhang, Minshuo Chen and Alexander Bukharin, Nikos Karampatziakis, Pengcheng He, Yu Cheng, Weizhu Chen and Tuo Zha; ``AdaLoRA: Adaptive Budget Allocation for Parameter-Efficient Fine-Tuning'', {\it arXiv:2303.10512}, 2023. Url: https://arxiv.org/abs/2303.10512
+
+\bibitem{qLora} Tim Dettmers, Artidoro Pagnoni, Ari Holtzman and Luke Zettlemoyer; ``QLoRA: Efficient Finetuning of Quantized LLMs'', {\it arXiv:2305.14314}, 2023. Url: https://arxiv.org/abs/2305.14314
+
+\bibitem{houlsby2019parameter} Neil Houlsby, Andrei Giurgiu, Stanislaw Jastrzebski, Bruna Morrone, Quentin de Laroussilhe, Andrea Gesmundo, Mona Attariyan and Sylvain Gelly; ``Parameter-Efficient Transfer Learning for NLP'', {\it arXiv:1902.00751}, 2019. Url: https://arxiv.org/abs/1902.00751
+
+\bibitem{li2021prefix} Xiang Lisa Li and Percy Liang; ``Prefix-Tuning: Optimizing Continuous Prompts for Generation'', {\it arXiv:2101.00190}, 2021. Url: https://arxiv.org/abs/2101.00190
+
+\bibitem{hu2021LoRA} Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang and Weizhu Chen; ``LoRA: Low-Rank Adaptation of Large Language Models'', {\it arXiv:2106.09685}, 2021. Url: https://arxiv.org/abs/2106.09685
+
+\bibitem{dimension} Armen Aghajanyan, Luke Zettlemoyer and Sonal Gupta; ``Intrinsic Dimensionality Explains the Effectiveness of Language Model Fine-Tuning', {\it arXiv:2012.13255}, 2020. Url: https://arxiv.org/abs/2012.13255
+
+\bibitem{liu2024dora} Shih-Yang Liu, Chien-Yi Wang, Hongxu Yin, Pavlo Molchanov, Yu-Chiang Frank Wang, Kwang-Ting Cheng and Min-Hung Chen; ``DoRA: Weight-Decomposed Low-Rank Adaptation'', {\it arXiv:2402.09353}, 2024. Url: https://arxiv.org/abs/2402.09353
+
+\bibitem{kopiczko2024vera} Dawid J. Kopiczko, Tijmen Blankevoort and Yuki M. Asano; ``VeRA: Vector-based Random Matrix Adaptation'', {\it arXiv:2310.11454}, 2024. Url: https://arxiv.org/abs/2310.11454
+
+\bibitem{qwen} Qwen3-0.6B. Available at {\it https://huggingface.co/Qwen/Qwen3-0.6B}. Accessed on 2 de octubre de 2025.
+
+\bibitem{arc} Ai2\_arc. Available at {\it https://huggingface.co/datasets/allenai/ai2\_arc}. Accessed on 1 de octubre de 2025.
+
+\bibitem{openmath} Open Math Instruct-2. Available at {\it https://huggingface.co/datasets/nvidia/OpenMathInstruct-2}. Accessed on 1 de octubre de 2025.
+
+\bibitem{squad} Squad\_v2. Available at {\it https://huggingface.co/datasets/rajpurkar/squad\_v2}. Accessed on 1 de octubre de 2025.
+
+\bibitem{huggingfaceTransformers} Hugging Face Transformers. Available at {\it https://huggingface.co/docs/transformers/en/index}. Accessed on October 4, 2025.
+
+\end{thebibliography}
+
+
+\end{document}
