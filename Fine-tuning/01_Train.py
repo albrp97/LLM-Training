@@ -45,7 +45,7 @@ except ImportError as e:
 
 train = True  # Enable training to create our trained model for quantization study
 
-DATASET_CHOICE = "openmath"  # Create trained model with full dataset
+DATASET_CHOICE = None  # Set to None to save base model snapshot
 # options: None (saves base model), "openmath", "squad"
 # arc results have no variation, so we will not test arc for now
 # we will not test boolq for now
@@ -55,7 +55,7 @@ TRUNC_TRAIN = None  # Number of training samples to keep; None/0 keeps all.
 
 FINETUNING = "SFT"
 
-MODEL_NAME = "Qwen/Qwen3-0.6B"
+MODEL_NAME = "Qwen/Qwen3-4B"
 
 device_map = {"": 0} if torch.cuda.is_available() else {"": "cpu"}
 

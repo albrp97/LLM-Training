@@ -1,0 +1,239 @@
+{
+    "model_name": "Models/Qwen3-1.7B-base_smoothquant_w8a8",
+    "evaluated_at": "2025-10-16T16:49:58",
+    "summary": {
+        "num_datasets": 3,
+        "total_samples": 6,
+        "total_correct": 0,
+        "total_incorrect": 6,
+        "overall_accuracy": 0.0,
+        "latency_seconds": {
+            "per_prompt": [
+                46.7497,
+                46.571,
+                46.0769,
+                46.0419,
+                45.9962,
+                45.9317
+            ],
+            "sum": 277.3674,
+            "mean": 46.2279,
+            "median": 46.0594,
+            "mode": 46.75,
+            "std": 0.3432
+        },
+        "tokens_generated": {
+            "per_prompt": [
+                1000,
+                1000,
+                1000,
+                1000,
+                1000,
+                1000
+            ],
+            "sum": 6000,
+            "mean": 1000.0,
+            "median": 1000.0,
+            "mode": 1000,
+            "std": 0.0
+        },
+        "quantization": {
+            "method": "SmoothQuant",
+            "weights_bits": 8,
+            "group_size": 64,
+            "activations_bits": 8,
+            "kv_cache_dtype": "int8",
+            "lm_head_dtype": "fp16",
+            "backend": "custom",
+            "calibration_size": 9,
+            "calibration_hash": "86532219d52450ae92af42edcca00daed1d41ab7e7ae836b229d8b0f1fb00a70"
+        },
+        "peak_vram_reserved_gb": 4.207,
+        "peak_vram_allocated_gb": 4.099
+    },
+    "datasets": {
+        "test-ai2_arc.parquet": {
+            "type": "mcq4",
+            "total_samples": 2,
+            "format_success_rate": 0.0,
+            "correct": 0,
+            "incorrect": 2,
+            "accuracy": 0.0,
+            "metrics": {
+                "task": "ARC (4-way MCQ)",
+                "macro_f1": 0.0,
+                "per_class": {
+                    "A": {
+                        "precision": 0.0,
+                        "recall": 0.0,
+                        "f1": 0.0
+                    },
+                    "B": {
+                        "precision": 0.0,
+                        "recall": 0.0,
+                        "f1": 0.0
+                    },
+                    "C": {
+                        "precision": 0.0,
+                        "recall": 0.0,
+                        "f1": 0.0
+                    },
+                    "D": {
+                        "precision": 0.0,
+                        "recall": 0.0,
+                        "f1": 0.0
+                    }
+                },
+                "confusion_matrix": {
+                    "A": {
+                        "A": 0,
+                        "B": 0,
+                        "C": 0,
+                        "D": 0
+                    },
+                    "B": {
+                        "A": 0,
+                        "B": 0,
+                        "C": 0,
+                        "D": 0
+                    },
+                    "C": {
+                        "A": 0,
+                        "B": 0,
+                        "C": 0,
+                        "D": 0
+                    },
+                    "D": {
+                        "A": 0,
+                        "B": 0,
+                        "C": 0,
+                        "D": 0
+                    }
+                },
+                "support": 2
+            },
+            "latency_seconds": {
+                "per_prompt": [
+                    46.7497,
+                    46.571
+                ],
+                "sum": 93.3207,
+                "mean": 46.6604,
+                "median": 46.6604,
+                "mode": 46.75,
+                "std": 0.1264
+            },
+            "tokens_generated": {
+                "per_prompt": [
+                    1000,
+                    1000
+                ],
+                "sum": 2000,
+                "mean": 1000.0,
+                "median": 1000.0,
+                "mode": 1000,
+                "std": 0.0
+            }
+        },
+        "test-OpenMathInstruct-2.parquet": {
+            "type": "math_numeric",
+            "total_samples": 2,
+            "format_success_rate": 0.0,
+            "correct": 0,
+            "incorrect": 2,
+            "accuracy": 0.0,
+            "metrics": {
+                "task": "OpenMathInstruct-2 (numeric)",
+                "avg_abs_diff": null,
+                "support": 2
+            },
+            "latency_seconds": {
+                "per_prompt": [
+                    46.0769,
+                    46.0419
+                ],
+                "sum": 92.1188,
+                "mean": 46.0594,
+                "median": 46.0594,
+                "mode": 46.077,
+                "std": 0.0247
+            },
+            "tokens_generated": {
+                "per_prompt": [
+                    1000,
+                    1000
+                ],
+                "sum": 2000,
+                "mean": 1000.0,
+                "median": 1000.0,
+                "mode": 1000,
+                "std": 0.0
+            }
+        },
+        "test-squad_v2.parquet": {
+            "type": "squad_v2",
+            "total_samples": 2,
+            "format_success_rate": 0.0,
+            "correct": 0,
+            "incorrect": 2,
+            "accuracy": 0.0,
+            "metrics": {
+                "task": "SQuAD v2",
+                "EM": 0.0,
+                "F1": 0.0,
+                "HasAns_EM": 0.0,
+                "HasAns_F1": 0.0,
+                "NoAns_Accuracy": 0.0,
+                "AvNA_Accuracy": 0.0,
+                "support": 2
+            },
+            "latency_seconds": {
+                "per_prompt": [
+                    45.9962,
+                    45.9317
+                ],
+                "sum": 91.9279,
+                "mean": 45.964,
+                "median": 45.964,
+                "mode": 45.996,
+                "std": 0.0456
+            },
+            "tokens_generated": {
+                "per_prompt": [
+                    1000,
+                    1000
+                ],
+                "sum": 2000,
+                "mean": 1000.0,
+                "median": 1000.0,
+                "mode": 1000,
+                "std": 0.0
+            }
+        }
+    },
+    "quantization": {
+        "method": "SmoothQuant",
+        "source": "quantization_metadata",
+        "weights_bits": 8,
+        "activations_bits": 8,
+        "kv_cache_bits": 8,
+        "group_size": 64,
+        "lm_head_dtype": "fp16",
+        "backend": "custom",
+        "kv_cache_dtype": "int8",
+        "calibration_size": 9,
+        "calibration_hash": "86532219d52450ae92af42edcca00daed1d41ab7e7ae836b229d8b0f1fb00a70",
+        "quant_tag": "SmoothQuant_w8_g64_headfp16"
+    },
+    "hardware": {
+        "peak_vram_reserved_gb": 4.207,
+        "peak_vram_allocated_gb": 4.099,
+        "per_gpu": [
+            {
+                "gpu": 0,
+                "peak_allocated_gb": 4.099,
+                "peak_reserved_gb": 4.207
+            }
+        ]
+    }
+}
