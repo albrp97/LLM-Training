@@ -27,7 +27,7 @@ from quantization_utils import (
 
 train = True
 
-DATASET_CHOICE = None
+DATASET_CHOICE = "openmath"
 # options: None (saves base model), "openmath", "squad"
 # arc results have no variation, so we will not test arc for now
 # we will not test boolq for now
@@ -37,12 +37,12 @@ TRUNC_TRAIN = None  # Number of training samples to keep; None/0 keeps all.
 
 FINETUNING = "SFT"
 
-MODEL_NAME = "Qwen/Qwen3-14B"
+MODEL_NAME = "Qwen/Qwen3-8B"
 
 device_map = {"": 0} if torch.cuda.is_available() else {"": "cpu"}
 
 
-PEFT_CONFIG = "NoPeft" 
+PEFT_CONFIG = "LoRa" 
 # options: "NoPeft", "LoRa", "VeRa", "DoRa"
 # -----------------------------------------------------------
 # LoRa hyperparameters
@@ -71,7 +71,7 @@ vera_dropout = 0.1
 # Initial init value for vera_lambda_d vector used when initializing the VeRA parameters. Small values (<=0.1) are recommended
 vera_d_initial = 0.1
 
-QUANT_METHOD = "NoQuant"  
+QUANT_METHOD = "QLORA"  
 # options: "NoQuant", "QLORA", "GPTQ", "QuaRot", "AdaRound", "BRECQ", "AWQ", "HQQ", "SmoothQuant"
 
 # Target settings used for PTQ pipelines (applied post-training via tools/quantize.py)

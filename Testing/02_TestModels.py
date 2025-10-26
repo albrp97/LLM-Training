@@ -218,8 +218,20 @@ def load_model_with_quant(model_name: str, quant: QuantContext, kv_cache_dtype: 
         load_kwargs["kv_cache_dtype"] = kv_cache_dtype
 
     method = quant.method
-    if method is QuantMethod.QLORA:
-        # QLoRA models already have quantization config saved, so just load normally
+    
+    # Check if model has BitsAndBytes config saved (QLORA or int8/4bit quantized models)
+    model_config_path = Path(model_name) / "config.json"
+    has_bnb_config = False
+    if model_config_path.exists():
+        try:
+            with open(model_config_path, "r") as f:
+                config = json.load(f)
+                has_bnb_config = "quantization_config" in config
+        except:
+            pass
+    
+    if method is QuantMethod.QLORA or has_bnb_config:
+        # QLoRA models or BitsAndBytes quantized models have quantization config saved
         # Remove torch_dtype as BitsAndBytes handles it
         load_kwargs.pop("torch_dtype", None)
         # Try loading with kv_cache_dtype first, fall back without it if not supported

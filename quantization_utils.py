@@ -18,6 +18,8 @@ class QuantMethod(str, Enum):
     """Unified registry for supported quantization approaches."""
 
     NO_QUANT = "NoQuant"
+    INT8 = "INT8"
+    BNB4BIT = "BNB4BIT"
     QLORA = "QLORA"
     GPTQ = "GPTQ"
     QUA_ROT = "QuaRot"
@@ -70,7 +72,7 @@ PTQ_METHODS: Tuple[QuantMethod, ...] = (
     QuantMethod.HQQ,
     QuantMethod.SMOOTH_QUANT,
 )
-TRAIN_TIME_QUANT_METHODS: Tuple[QuantMethod, ...] = (QuantMethod.QLORA,)
+TRAIN_TIME_QUANT_METHODS: Tuple[QuantMethod, ...] = (QuantMethod.INT8, QuantMethod.BNB4BIT, QuantMethod.QLORA)
 
 
 def _sanitize_segment(value: Union[str, int, float]) -> str:

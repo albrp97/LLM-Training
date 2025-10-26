@@ -1,7 +1,13 @@
 model,train_peak_vram_reserved_gb,train_peak_vram_allocated_gb,eval_peak_vram_reserved_gb,eval_peak_vram_allocated_gb,ai2_arc__macro_f1,ai2_arc__latency_mean_s,OpenMathInstruct-2__avg_abs_diff,OpenMathInstruct-2__latency_mean_s,squad_v2__F1,squad_v2__latency_mean_s
+Qwen3-1.7B-base,0.0,0.0,3.561,3.428,0.8138,4.0342,1387.02131,15.8048,27.61,0.3217
 Qwen3-4B-base,0.0,0.0,8.076,7.866,0.8808,2.3529,1258.547256,13.8011,31.19,0.3818
+Qwen3-4B-base_4bit_BnB,0.0,0.0,3.91,2.844,0.8591,11.9689,606.520341,27.7212,32.68,2.3029
+Qwen3-4B-base_Int8_BnB,0.0,0.0,4.986,4.491,0.8402,11.0993,1257.820605,52.9474,31.19,1.4527
 Qwen3-8B-base,0.0,0.0,15.832,15.626,0.8994,3.2998,144.975902,10.257,50.0,0.5741
+Qwen3-4B-openmath_SFT_NoPeft_4bit_BnB,0.0,0.0,3.885,2.844,0.8567,9.2095,59.472222,2.4098,28.68,0.8241
+Qwen3-4B-openmath_SFT_NoPeft_Int8_BnB,0.0,0.0,4.949,4.495,0.8491,9.2026,80.714286,3.3091,32.02,1.8179
 Qwen3-4B-openmath_SFT_NoPeft_NoQuant,33.105,32.32,8.014,7.867,0.8259,3.2743,9.0,0.6113,32.91,0.3919
 Qwen3-8B-openmath_SFT_DoRa256_NoQuant,21.881,20.176,15.832,15.626,0.8995,2.59,136.383978,6.252,48.0,0.5397
 Qwen3-8B-openmath_SFT_LoRa256_NoQuant,21.77,20.167,15.832,15.626,0.8995,3.39,145.944175,10.2958,49.31,0.5404
+Qwen3-8B-openmath_SFT_LoRa256_QLORA_w4_headbf16,11.863,7.608,7.262,6.023,0.8803,2.6936,116.962302,5.3971,39.73,0.8231
 Qwen3-8B-openmath_SFT_VeRa512_NoQuant,17.629,16.192,15.832,15.626,0.8994,3.2421,137.155558,9.3313,49.33,0.566
