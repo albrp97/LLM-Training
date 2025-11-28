@@ -2,7 +2,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from quantization_utils import QuantMethod, QuantizationSpec, tag_quant
+sys.path.append(str(Path(__file__).parent.parent))
+from utils.quantization_utils import QuantMethod, QuantizationSpec, tag_quant
 
 
 def test_tag_quant_matrix():

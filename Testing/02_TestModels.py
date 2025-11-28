@@ -27,7 +27,7 @@ import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
 
-from quantization_utils import (
+from utils.quantization_utils import (
     QuantMethod,
     QuantizationSpec,
     detect_method_from_path,

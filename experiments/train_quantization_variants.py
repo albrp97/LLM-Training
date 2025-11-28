@@ -12,8 +12,8 @@ import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from datetime import datetime
 
-sys.path.append(str(Path(__file__).parent))
-from quantization_utils import QuantMethod, QuantizationSpec
+sys.path.append(str(Path(__file__).parent.parent))
+from utils.quantization_utils import QuantMethod, QuantizationSpec
 
 def safe_serialize(obj):
     """Converts non-serializable objects to serializable formats."""

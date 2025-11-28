@@ -17,7 +17,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Dict, Tuple
 
-from quantization_utils import QuantMethod, QuantizationSpec, tag_quant
+sys.path.append(str(Path(__file__).parent.parent))
+from utils.quantization_utils import QuantMethod, QuantizationSpec, tag_quant
 
 # ---------------------------------------------------------------------------
 # Mappings and helpers

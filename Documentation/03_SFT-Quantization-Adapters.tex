@@ -1,0 +1,286 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=2.25cm]{geometry}
+
+% Packages
+\usepackage[utf8]{inputenc}
+\usepackage{booktabs}
+\usepackage{amsmath, amssymb}
+\usepackage{siunitx}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{datetime}
+\usepackage{adjustbox}
+\usepackage{float}
+\usepackage{enumitem}
+
+% Metadata
+
+\newdateformat{monthyeardate}{\monthname[\THEMONTH] \THEYEAR}
+\setlength{\tabcolsep}{4pt}
+
+\title{Bigger is Not Always Better: A Comparative Study of Quantization and Fine-Tuning on Large Language Models}
+
+\author{Alberto Rodero\thanks{Equal contribution} \and Pablo Lobato\footnotemark[1]}
+\date{\monthyeardate\today}
+
+\sisetup{
+  round-mode=places,
+  round-precision=3,
+  table-number-alignment=center
+}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+\end{abstract}
+
+\section{Introduction}
+Large Language Models (LLMs) have become the foundation for many modern applications in natural language processing, powering chatbots, code assistants, search systems, and domain-specific solutions. This scaling, however, introduces a significant bottleneck. The computational and memory resources required to train or even fine-tune these models are expensive, demanding data-center-grade hardware with vast amounts of high-bandwidth video memory (VRAM). A multi-billion parameter model stored in standard precision requires many gigabytes of VRAM for the weights alone, with optimizer states and activation gradients during training easily multiplying this requirement, far exceeding the capacity of consumer GPUs.
+
+Partial solutions have emerged in the form of Parameter-Efficient Fine-Tuning (PEFT) methods, such as Low-Rank Adaptation (LoRA), which we have explored in previous work. While LoRA\cite{hu2021LoRA} reduces the number of trainable parameters, it does not solve the foundational problem: the full-precision base model must still be loaded into memory. As we move from 1.8B to 8B models, even this baseline memory footprint becomes untenable on common hardware.
+
+This journal introduces quantization as the necessary complementary strategy. Where PEFT methods reduce the computational cost of the backward pass, quantization shrinks the memory footprint of the base model itself. We extend our previous research on PEFT by tackling the 4B and 8B model classes, for which new techniques are essential. This study provides a theoretical overview of these methods and presents an empirical analysis comparing the SFT of 4B and 8B models using QLoRA.
+
+\section{Background}
+\subsection{Quantization}
+
+At its core, quantization is the process of reducing the numerical precision of a model's weights and, in some cases, its activations. It is a mapping from a high-precision data type, such as 32-bit floating-point (FP32), to a low-precision data type, like 8-bit integer (INT8). This compression is analogous to reducing the bit-depth of an image; while some information is lost, the essential structure remains, but the file size is dramatically reduced. 
+
+This process works because neural networks exhibit a high degree of robustness to noise and parameter perturbation. The learned weights are often distributed in a way that does not require high precision to capture their functional importance.
+
+\subsubsection{Methodologies}
+
+The two primary approaches to quantization are Post-Training Quantization (PTQ) and Quantization-Aware Training (QAT).
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Post-Training Quantization (PTQ)} is the most common and straightforward method. As the name suggests, it is applied after the model has been fully trained in high precision. The weights are converted to the low-precision format (e.g., INT8). The primary advantage of PTQ is its speed and simplicity; no re-training is required. However, it can lead to significant accuracy degradation, especially at very low bit-levels (like 4-bit), as the model's weights were not "aware" that they would be subjected to this precision loss.
+    \item \textbf{Quantization-Aware Training (QAT)} offers a more robust but computationally intensive alternative. Instead of  applying the quantization after training, QAT integrates the quantization process during the training loop itself. This approach simulates the effects of information loss from low-precision in the forward pass, allowing the model to learn and adapt to this new, constrained environment. By making the model "aware" of the quantization during its training, it learns to develop weights that are highly robust to precision loss. This method almost always results in higher accuracy for the quantized model compared to PTQ, but it comes at the significant cost of a full, computationally expensive training or fine-tuning cycle.
+\end{itemize}
+
+\subsection{QLoRA}
+
+QLoRA (Quantized Low-Rank Adaptation)\cite{qLora} is an efficient fine-tuning technique introduced to resolve the conflict between model scale and hardware limitations. This is accomplished by backpropagating gradients through a frozen, 4-bit quantized base model into a small set of Low-Rank Adapters (LoRA). This method introduces three key innovations: (1) \textbf{4-bit NormalFloat (NF4)}, an information-theoretically optimal data type for normally distributed weights. (2) \textbf{Double Quantization (DQ)}, a process that further reduces memory by quantizing the quantization constants themselves. (3) \textbf{Paged Optimizers}, which use NVIDIA Unified Memory to handle memory spikes by paging optimizer states to CPU RAM.
+
+The QLoRA process involves two distinct precisions: a 4-bit \textbf{storage data type} (NF4) for the frozen base model and a 16-bit \textbf{computation data type} (BFloat16) for the adapters and matrix multiplications. When a calculation is needed, the 4-bit weights are dequantized to 16-bit on-the-fly, used for the forward or backward pass, and then discarded. Gradients are computed in 16-bit, but parameter updates are only applied to the small 16-bit LoRA adapters.
+
+\section{Motivation \& Context}
+
+\paragraph{Our aim.}
+Our objective is to provide an \textbf{empirically-grounded comparison} of Supervised Fine-Tuning (SFT) performance, moving from 0.6B and 1.7B models of our previous work to the more capable \textbf{4B and 8B model classes}. This research is framed by a critical real-world constraint: the limited availability of high-VRAM GPUs. We investigate the practical trade-offs across two primary axes: \textbf{training efficiency} (peak VRAM, time-to-convergence) and \textbf{model efficacy} (downstream task accuracy, qualitative performance). This jorunal specifically evaluates quantization, particularly \textbf{QLoRA}, as the core enabling technology. The goal is to provide \textbf{actionable guidance} for practitioners: to quantify the performance gains from scaling model size from 4B to 8B, and to establish a \textbf{hardware-validated pathway} for reliably fine-tuning these models on consumer-grade hardware.
+
+\subsection*{Key Questions}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Q1:} How does model scale (from 1.7B to 8B) impact baseline efficacy and inference cost prior to fine-tuning?
+    \item \textbf{Q2:} What is the efficacy and latency trade-off when applying 4-bit and 8-bit post-training quantization?
+    \item \textbf{Q3:} Which baseline model and quantization state provides the optimal balance of inference cost and performance?
+    \item \textbf{Q4:} Does a larger, efficiently-tuned model (8B-LoRA) surpass the efficacy of a smaller, fully fine-tuned model (4B-SFT)?
+    \item \textbf{Q5:} What are the precise training VRAM efficiency gains of using QLoRA over standard LoRA on the 8B model?
+    \item \textbf{Q6:} Do the memory savings from QLoRA introduce a significant efficacy penalty compared to standard LoRA?
+    \item \textbf{Q7:} Which model and fine-tuning combination achieves the highest overall efficacy, and at what computational cost?
+\end{itemize}
+
+\section{Experimental Setup}
+
+\subsection*{Models}
+We scale our analysis to the \textbf{Qwen3-4B} and \textbf{Qwen3-8B} model classes to represent the upper bound of consumer-grade hardware. We evaluate \textbf{Qwen3-4B} under \textbf{full fine-tuning (SFT/NoPEFT)} and various post-training quantization states. We evaluate \textbf{Qwen3-8B} using three parameter-efficient methods—\textbf{LoRA}, \textbf{DoRA} and \textbf{VeRA}, including a quantized training variant (\textbf{QLoRA}). The \textbf{Qwen3-1.7B (base)} is retained as a lower-bound baseline.
+
+\subsection*{PEFT \& Quantization configurations}
+For standard PEFT, LoRA and DoRA utilize rank $r=256$, while VeRA uses $r=512$. Adapters target standard attention projections. For \textbf{QLoRA}\cite{qLora}, we employ the \textbf{4-bit NormalFloat (NF4)} data type for the base model, \textbf{Double Quantization}, and \textbf{Paged Optimizers} to manage memory spikes. For inference baselines, we additionally evaluate \textbf{Post-Training Quantization (PTQ)} using \textbf{BitsAndBytes} (BnB) in both \textbf{4-bit} and \textbf{8-bit} integer formats.
+
+\subsection*{Datasets}
+Models are fine-tuned on \textbf{OpenMathInstruct-2}\cite{openmath} to establish strong in-domain numerical capabilities, using \textbf{1{,}000 training samples}. Evaluation is conducted on three distinct tasks to measure generalization: \textbf{OpenMathInstruct-2} (In-Domain, numeric), \textbf{ARC}\cite{arc} (Out-of-Distribution, reasoning, 4-way MCQ), and \textbf{SQuAD v2}\cite{squad} (Out-of-Distribution, extractive QA), with \textbf{200 samples each}.
+
+\subsection*{Framework \& training}
+Implementation relies on \textbf{Hugging Face Transformers}\cite{huggingfaceTransformers}, \textbf{TRL} for Supervised Fine-Tuning, \textbf{PEFT}, and \textbf{BitsAndBytes} for quantization. Computations use \texttt{bfloat16} on CUDA. Data follows a standard chat-style SFT format. Global hyperparameters include a fixed learning rate, 1 epoch, and an effective batch size of 8 via gradient accumulation.
+
+\subsection*{Evaluation protocol \& metrics}
+Decoding is deterministic (\texttt{do\_sample=False}) with \textbf{"reasoning" strictly turned off} to isolate the model's weight-based capabilities from chain-of-thought prompting effects. We report \textbf{ARC macro-F1}, \textbf{OpenMath AbsDiff} (mean absolute difference, lower is better), and \textbf{SQuAD F1}. \textbf{Latency} is measured as wall-clock time per \texttt{generate()} call. \textbf{VRAM} stats track \emph{Resident} (active) and \emph{Allocated} (peak) memory usage.
+
+\subsection*{Known Limitations \& External Validity}
+
+\textbf{Single-seed snapshots} on \textbf{small evaluation sets} (200/item) imply statistical uncertainty; we prioritize identifying comparative signal over absolute benchmarks. Our metrics favor correctness (F1/AbsDiff) over \textbf{production utility} (throughput/cost). While we scale to \textbf{8B models}, findings may not extrapolate to \textbf{70B+} data-center class models. The study is \textbf{architecture-specific to Qwen}; other dense or MoE backbones (e.g., Llama 3, Mixtral) may exhibit different sensitivities to quantization noise. Finally, \textbf{systematic overheads} in quantization kernels (e.g., bitsandbytes dequantization speed) introduce latency biases that may differ from optimized production inference engines (e.g., vLLM, TensorRT-LLM).
+
+\section{Results by Question \& Interpretation}
+
+\begin{table}[H]
+\centering
+\caption{Full results across tasks with VRAM stats. Lower is better for Math AbsDiff and VRAM. Latency in seconds. Best \emph{efficacy}, \emph{efficiency} (latency), and \emph{VRAM} within each training block are \textbf{bolded}.}
+\label{tab:full_with_vram}
+\footnotesize
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{llll rrrr rr rr rr}
+\toprule
+ & & & & \multicolumn{4}{c}{\textbf{VRAM (GB)}} & \multicolumn{2}{c}{\textbf{ARC}} & \multicolumn{2}{c}{\textbf{OpenMath}} & \multicolumn{2}{c}{\textbf{SQuAD v2}} \\
+\cmidrule(lr){5-8}\cmidrule(lr){9-10}\cmidrule(lr){11-12}\cmidrule(lr){13-14}
+\textbf{Base} & \textbf{PEFT} & \textbf{Quant.} & \textbf{$r$} &
+\textbf{Train Res.} & \textbf{Train All.} & \textbf{Eval Res.} & \textbf{Eval All.} &
+\textbf{F1 $\uparrow$} & \textbf{Lat $\downarrow$} &
+\textbf{AbsDiff $\downarrow$} & \textbf{Lat $\downarrow$} &
+\textbf{F1 $\uparrow$} & \textbf{Lat $\downarrow$} \\
+\midrule
+\multicolumn{14}{l}{\textit{Trained on OpenMath}} \\
+Qwen3-4B & NoPEFT & 4bit\_BnB   & --   & --      & --      & \textbf{3.885} & \textbf{2.844} & 0.8567 & 9.210 & 59.472 & 2.410 & 28.68 & 0.824 \\
+Qwen3-4B & NoPEFT & Int8\_BnB   & --   & --      & --      & 4.949         & 4.495          & 0.8491 & 9.203 & 80.714 & 3.309 & 32.02 & 1.818 \\
+Qwen3-4B & NoPEFT & NoQuant     & --   & 33.105  & 32.320  & 8.014         & 7.867          & 0.8259 & 3.274 & \textbf{9.000} & \textbf{0.611} & 32.91 & \textbf{0.392} \\
+Qwen3-8B & DoRA   & NoQuant     & 256  & 21.881  & 20.176  & 15.832        & 15.626         & \textbf{0.8995} & \textbf{2.590} & 136.384 & 6.252 & 48.00 & 0.540 \\
+Qwen3-8B & LoRA   & NoQuant     & 256  & 21.770  & 20.167  & 15.832        & 15.626         & \textbf{0.8995} & 3.390          & 145.944 & 10.296 & 49.31 & 0.540 \\
+Qwen3-8B & LoRA   & QLoRA w4    & 256  & \textbf{11.863} & \textbf{7.608} & 7.262          & 6.023          & 0.8803 & 2.694 & 116.962 & 5.397 & 39.73 & 0.823 \\
+Qwen3-8B & VeRA   & NoQuant     & 512  & 17.629  & 16.192  & 15.832        & 15.626         & 0.8994 & 3.242 & 137.156 & 9.331 & \textbf{49.33} & 0.566 \\
+\midrule
+\multicolumn{14}{l}{\textit{Base models (no fine-tuning)}} \\
+Qwen3-1.7B & Base & NoQuant   & -- & -- & -- & \textbf{3.561} & 3.428 & 0.8138 & 4.034 & 1387.021 & 15.805 & 27.61 & \textbf{0.322} \\
+Qwen3-4B   & Base & NoQuant   & -- & -- & -- & 8.076         & 7.866 & 0.8808 & \textbf{2.353} & 1258.547 & 13.801 & 31.19 & 0.382 \\
+Qwen3-4B   & Base & 4bit\_BnB & -- & -- & -- & 3.910         & \textbf{2.844} & 0.8591 & 11.969 & 606.520 & 27.721 & 32.68 & 2.303 \\
+Qwen3-4B   & Base & Int8\_BnB & -- & -- & -- & 4.986         & 4.491 & 0.8402 & 11.099 & 1257.821 & 52.947 & 31.19 & 1.453 \\
+Qwen3-8B   & Base & NoQuant   & -- & -- & -- & 15.832        & 15.626 & \textbf{0.8994} & 3.300 & \textbf{144.976} & \textbf{10.257} & \textbf{50.00} & 0.574 \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{table}
+
+\subsection*{Q1. How does model scale (from 1.7B to 8B) impact baseline efficacy and inference cost prior to fine-tuning?}
+\textbf{Scaling from 1.7B to 8B substantially improves baseline efficacy, especially for math and extractive QA, but roughly quadruples inference VRAM and yields task-dependent latency changes.}
+\begin{itemize}
+  \item \textbf{Efficacy vs.\ scale.}
+  From 1.7B to 4B, ARC F1 improves by \textbf{+8.2\%} (0.8138 $\rightarrow$ 0.8808) and SQuAD F1 by \textbf{+13.0\%} (27.61 $\rightarrow$ 31.19), with a modest \textbf{--9.3\%} OpenMath error reduction (1{,}387.0 $\rightarrow$ 1{,}258.5). Moving from 4B to 8B yields smaller ARC gains (\textbf{+2.1\%} F1) but a dramatic \textbf{--88.5\%} reduction in OpenMath error (1{,}258.5 $\rightarrow$ 145.0) and a large \textbf{+60.3\%} boost in SQuAD F1 (31.19 $\rightarrow$ 50.00). Overall, 8B improves ARC F1 by \textbf{+10.5\%}, cuts OpenMath error by \textbf{--89.5\%}, and raises SQuAD F1 by \textbf{+81.1\%} vs.\ the 1.7B base.
+  \item \textbf{Inference cost vs.\ scale.}
+  Eval-all VRAM grows roughly linearly with size: 3.43\,GB (1.7B) $\rightarrow$ 7.87\,GB (4B, \textbf{+129.5\%}) $\rightarrow$ 15.63\,GB (8B, \textbf{+98.7\%}), for an overall \textbf{+355.8\%} increase from 1.7B to 8B. Latency trends are task-specific: on OpenMath, larger models are both more accurate and faster (8B is \textbf{--35.1\%} faster than 1.7B; 15.80\,s $\rightarrow$ 10.26\,s), and 4B is also faster than 1.7B on ARC (\textbf{--41.7\%} latency). In contrast, SQuAD latency grows with scale (8B is \textbf{+78.5\%} slower than 1.7B; 0.32\,s $\rightarrow$ 0.57\,s), suggesting that the serve-time cost of scaling is more pronounced on longer textual outputs than on short numeric or MCQ responses.
+  \item \textbf{Quantized baselines.}
+  For the 4B base, 4-bit and 8-bit quantization reduce eval-all VRAM by \textbf{--63.8\%} (2.84\,GB) and \textbf{--42.9\%} (4.49\,GB) vs.\ the non-quantized 4B base (7.87\,GB), while keeping ARC/SQuAD F1 within \mbox{$\leq$4--5\%} of the non-quantized model and even halving OpenMath error for the 4-bit variant. However, these savings come with substantial latency penalties (roughly \textbf{2--6$\times$} slower across tasks), making quantized baselines primarily attractive for extreme VRAM constraints rather than speed.
+\end{itemize}
+\textbf{Takeaway:} Before fine-tuning, moving from 1.7B to 8B clearly boosts quality, especially on math and extractive QA, but at the cost of $\sim$4$\times$ higher inference VRAM and, in some tasks, higher latency. The 4B base offers a middle ground (good ARC/SQuAD gains with moderate memory), while quantized 4B models trade large memory reductions for significantly slower decoding.
+    
+
+\subsection*{Q2. What is the efficacy and latency trade-off when applying 4-bit and 8-bit post-training quantization?}
+\textbf{4-bit and 8-bit post-training quantization cut VRAM by 40--65\%, but they are 3--6$\times$ slower at inference and can significantly hurt efficacy once the model is fine-tuned.}
+\begin{itemize}
+  \item \textbf{On 4B base models.} 
+  Applying 4-bit PTQ reduces eval-all VRAM by \textbf{--63.8\%} (7.87\,GB $\rightarrow$ 2.84\,GB), while 8-bit PTQ saves \textbf{--42.9\%} (4.49\,GB). ARC F1 stays within \textbf{--2.5\%} (4-bit) and \textbf{--4.6\%} (8-bit) of the non-quantized 4B base; SQuAD F1 even increases slightly for 4-bit (\textbf{+4.8\%}), and OpenMath error remains within noise-level changes on average. However, latency increases sharply: 4-bit becomes \textbf{5.1$\times$} slower on ARC, \textbf{2.0$\times$} on OpenMath, and \textbf{6.0$\times$} on SQuAD; 8-bit is \textbf{4.7$\times$}, \textbf{3.8$\times$}, and \textbf{3.8$\times$} slower, respectively.
+  \item \textbf{On 4B full-FT (OpenMath SFT) models.}
+  Post-training quantization of the OpenMath-tuned 4B NoPEFT model has a stronger negative effect on efficacy. Although ARC F1 slightly \emph{improves} by \textbf{+3.7\%} (4-bit) and \textbf{+2.8\%} (8-bit), in-domain \textit{OpenMath} error explodes from 9.0 to \textbf{59.5} (4-bit, \textbf{6.6$\times$} higher) and \textbf{80.7} (8-bit, \textbf{9.0$\times$} higher). On \textit{SQuAD}, F1 drops by \textbf{--12.9\%} (4-bit) and \textbf{--2.7\%} (8-bit). Latency again increases substantially: 4-bit runs are \textbf{2.8$\times$} slower on ARC, \textbf{3.9$\times$} on OpenMath, and \textbf{2.1$\times$} on SQuAD; 8-bit reaches \textbf{2.8$\times$}, \textbf{5.4$\times$}, and \textbf{4.6$\times$}, respectively. Eval-all VRAM drops by the same \textbf{--63.8\%} (4-bit) and \textbf{--42.9\%} (8-bit) as in the base case.
+  \item \textbf{Interpretation.}
+  For the 4B \emph{base} model, PTQ behaves almost like a memory-only optimization: quality is mostly preserved within a few percent, but quantized kernels and dequantization overhead make decoding much slower. Once the model is fully fine-tuned for numerically sensitive tasks like OpenMath, quantization noise interacts poorly with the learned calibration, sharply degrading math accuracy while still incurring the same 3--6$\times$ latency hit; 8-bit is consistently safer than 4-bit but still slower and, on in-domain math, far from lossless.
+\end{itemize}
+\textbf{Takeaway:} In this setup, 4-bit/8-bit PTQ are only attractive when VRAM is the hard bottleneck and latency is secondary; for fine-tuned math and QA models, the large slowdown and, in OpenMath, severe accuracy regressions make serving the non-quantized model preferable whenever feasible.
+
+
+\subsection*{Q3. Which baseline model and quantization state provides the optimal balance of inference cost and performance?}
+\textbf{After fine-tuning, the 4B OpenMath NoPEFT (non-quantized) model offers the best overall balance; among pure baselines, the 4B non-quantized base is the most balanced.}
+\begin{itemize}
+  \item \textbf{4B OpenMath NoPEFT (NoQuant) as the overall sweet spot after SFT.}
+  The 4B OpenMath SFT NoPEFT (NoQuant) model combines very strong math performance with moderate serving cost. Compared to the 4B non-quantized base, it \textbf{slashes OpenMath error by --99.3\%} (1{,}258.5 $\rightarrow$ 9.0) and slightly improves SQuAD F1 (\textbf{+5.5\%}, 31.19 $\rightarrow$ 32.91), at the expense of a modest ARC F1 drop (0.8808 $\rightarrow$ 0.8259, \textbf{--6.2\%}). Eval-all VRAM remains essentially unchanged (7.87\,GB $\rightarrow$ 7.87\,GB), while OpenMath latency collapses from 13.80\,s to \textbf{0.61\,s} (\textbf{--95.6\%}); ARC and SQuAD latency change by only \textbf{+39.2\%} and \textbf{+2.6\%}, respectively. This makes 4B NoPEFT NoQuant the best multi-task cost–performance point in the full configuration set.
+  \item \textbf{4B non-quantized base as the best baseline (pre-SFT).}
+  Compared to the 1.7B base, the 4B non-quantized base improves ARC F1 by \textbf{+8.2\%} (0.8138 $\rightarrow$ 0.8808), reduces OpenMath error by \textbf{--9.3\%} (1{,}387.0 $\rightarrow$ 1{,}258.5), and raises SQuAD F1 by \textbf{+13.0\%} (27.61 $\rightarrow$ 31.19). It is also faster on ARC and OpenMath (latency \textbf{--41.7\%} and \textbf{--12.7\%}), with only a modest SQuAD latency increase (\textbf{+18.7\%}), at the cost of \textbf{+129.5\%} higher eval-all VRAM (3.43\,GB $\rightarrow$ 7.87\,GB). This makes the 4B non-quantized base the most balanced *baseline* prior to fine-tuning.
+  \item \textbf{8B as the quality-first baseline.}
+  Relative to the 4B base, the 8B base yields small gains on ARC (\textbf{+2.1\%} F1) but very large boosts on math and QA: OpenMath error drops by \textbf{--88.5\%} (1{,}258.5 $\rightarrow$ 145.0) and SQuAD F1 increases by \textbf{+60.3\%} (31.19 $\rightarrow$ 50.00). This comes with roughly \textbf{2$\times$} eval-all VRAM (\textbf{+98.7\%}, 7.87\,GB $\rightarrow$ 15.63\,GB) and mixed latency: faster on OpenMath (\textbf{--25.7\%}) but slower on ARC and SQuAD (\textbf{+40.2\%} and \textbf{+50.4\%}). Thus 8B is the Pareto point for maximum quality, not for balanced cost.
+  \item \textbf{Quantized 4B: memory-efficient but latency-heavy corners.}
+  For the 4B base, 4-bit quantization slashes eval-all VRAM by \textbf{--63.8\%} (7.87\,GB $\rightarrow$ 2.84\,GB) and 8-bit by \textbf{--42.9\%} (4.49\,GB), while keeping ARC and SQuAD F1 within \mbox{$\leq$4–5\%} of the non-quantized 4B base and even halving OpenMath error for 4-bit (\textbf{--51.8\%}). However, this comes at the price of severely increased latency: 4-bit runs are \textbf{4–5$\times$} slower (e.g., ARC latency \textbf{+408.7\%}, SQuAD \textbf{+503.2\%}), and 8-bit is around \textbf{3–4$\times$} slower. These settings form VRAM-optimal but latency-dominated points on the Pareto front.
+\end{itemize}
+\textbf{Takeaway:} Under typical serving conditions where both memory and latency matter, the \textbf{4B OpenMath SFT NoPEFT (NoQuant)} configuration is the best-balanced choice overall. Among baselines without fine-tuning, the \textbf{4B non-quantized base} is the most balanced; the \textbf{8B base} is reserved for quality-first deployments, while \textbf{4-bit/8-bit 4B} are niche options for extreme VRAM constraints where large latency penalties are acceptable.
+
+\subsection*{Q4. Does a larger, efficiently-tuned model (8B-LoRA) surpass the efficacy of a smaller, fully fine-tuned model (4B-SFT)?}
+\textbf{The 8B-LoRA models clearly surpass 4B-SFT on OOD (out-of-distribution) tasks like ARC and SQuAD, but they fail to match its in-domain OpenMath accuracy and are often substantially slower.}
+\begin{itemize}
+  \item \textbf{In-domain (OpenMath).}
+  The 4B-SFT NoPEFT model achieves an OpenMath AbsDiff of \textbf{9.0}, while 8B-LoRA variants degrade math accuracy by more than an order of magnitude: 8B-LoRA (NoQuant) reaches \textbf{145.9} and 8B-LoRA QLoRA reaches \textbf{117.0}, i.e., roughly \textbf{+15--12$\times$} higher error vs 4B-SFT. OpenMath latency also explodes from \textbf{0.61\,s} (4B-SFT) to \textbf{10.30\,s} (8B-LoRA, +1584\%) and \textbf{5.40\,s} (8B-LoRA QLoRA, +783\%).
+  \item \textbf{OOD tasks (ARC and SQuAD).}
+  On ARC, 8B-LoRA improves F1 from \textbf{0.8259} (4B-SFT) to \textbf{0.8995} (+\textbf{8.9\%}) and 8B-LoRA QLoRA to \textbf{0.8803} (+\textbf{6.6\%}). On SQuAD, gains are even larger: F1 increases from \textbf{32.91} (4B-SFT) to \textbf{49.31} (+\textbf{49.8\%}) for 8B-LoRA and \textbf{39.73} (+\textbf{20.7\%}) for 8B-LoRA QLoRA. ARC latency is comparable or slightly better for 8B-LoRA QLoRA (3.27\,s $\rightarrow$ \textbf{2.69\,s}, \textbf{--17.7\%}), but SQuAD latency rises from \textbf{0.39\,s} to \textbf{0.54\,s} (+\textbf{37.9\%}) for 8B-LoRA and \textbf{0.82\,s} (+\textbf{110.0\%}) for QLoRA.
+  \item \textbf{Inference VRAM and efficiency.}
+  The non-quantized 8B-LoRA roughly doubles eval-all VRAM vs 4B-SFT (7.87\,GB $\rightarrow$ \textbf{15.63\,GB}, \textbf{+98.6\%}), whereas 8B-LoRA QLoRA is actually more memory-efficient, using \textbf{6.02\,GB} eval-all (\textbf{--23.4\%} vs 4B-SFT). This makes QLoRA an interesting efficiency corner: it offers higher ARC/SQuAD F1 at \emph{lower} VRAM than 4B-SFT, but still inherits the severe in-domain OpenMath degradation and higher SQuAD latency.
+  \item \textbf{Interpretation.}
+  The fully fine-tuned 4B-SFT can tightly calibrate numeric outputs for OpenMath, yielding very low error and extremely fast decoding. LoRA on 8B injects task information into a much larger backbone, which boosts general reasoning and extractive QA (ARC, SQuAD) but does not recover the same numeric precision and short-output style learned by 4B-SFT; the larger backbone also increases compute and, except on ARC with QLoRA, tends to hurt latency.
+\end{itemize}
+\textbf{Takeaway:} A larger 8B-LoRA model is preferable when \emph{cross-task} OOD (out-of-distribution) performance on ARC/SQuAD is the priority and extra in-domain math error is acceptable; for high-precision in-domain numeracy on OpenMath with strong overall efficiency, the smaller 4B-SFT remains the better choice.
+
+\subsection*{Q5. What are the precise training VRAM efficiency gains of using QLoRA over standard LoRA on the 8B model?}
+\textbf{QLoRA reduces total allocated training VRAM by over 60\%, effectively enabling the fine-tuning of 8B models on consumer-grade GPUs with less than 12GB of memory.}
+\begin{itemize}
+    \item \textbf{VRAM Reduction.}
+    Standard LoRA on the Qwen3-8B model requires a peak \emph{Training Allocated} VRAM of \textbf{20.167\,GB}. In contrast, QLoRA (w4) reduces this requirement to just \textbf{7.608\,GB}. This represents a massive \textbf{--62.3\%} reduction in memory footprint during training.
+    \item \textbf{Hardware Implications.}
+    While the standard LoRA requirement (20.2\,GB) necessitates high-end enthusiast hardware (e.g., NVIDIA RTX 4090/5090 with 24--32GB VRAM) or enterprise cards, the QLoRA requirement (7.6\,GB) comfortably fits within the VRAM budget of mid-range consumer GPUs (e.g., RTX 4060/5060 Ti with 8GB--12GB). This democratizes the ability to fine-tune 8B-class models, lowering the barrier to entry significantly without requiring expensive infrastructure.
+    \item \textbf{Reserved vs. Allocated.}
+    Interestingly, the \emph{Training Reserved} memory also drops proportionally, from \textbf{21.770\,GB} (LoRA) to \textbf{11.863\,GB} (QLoRA), a \textbf{--45.5\%} reduction. The disparity between the "Reserved" and "Allocated" reduction highlights QLoRA's efficiency in managing active memory states via paged optimizers.
+\end{itemize}
+\textbf{Takeaway:} QLoRA transforms the 8B fine-tuning from an enthusiast-only task (requiring 24GB cards) to a widely accessible one (feasible on 8GB cards), with a $>$60\% reduction in peak memory usage.
+
+\subsection*{Q6. Do the memory savings from QLoRA introduce a significant efficacy penalty compared to standard LoRA?}
+\textbf{For the primary fine-tuning task (OpenMath), no; QLoRA actually outperforms standard LoRA. However, for out-of-domain benchmarks—included to gauge the methods' performance in domains where the model was not fine-tuned—the penalty is task-dependent: QLoRA preserves general reasoning (ARC) well but suffers significant degradation in extractive precision (SQuAD).}
+\begin{itemize}
+    \item \textbf{Reasoning (ARC).}
+    The degradation in abstract reasoning is minimal. Standard LoRA achieves an F1 of \textbf{0.8995}, while QLoRA achieves \textbf{0.8803}. This is a relative drop of only \textbf{--2.1\%}. For tasks relying on general logic, QLoRA is a highly efficient substitute.
+    \item \textbf{Extractive QA (SQuAD).}
+    The penalty is much more severe for precision-extraction tasks. Standard LoRA achieves an F1 of \textbf{49.31}, whereas QLoRA drops to \textbf{39.73}. This represents a substantial \textbf{--19.4\%} decline in performance. This suggests that the 4-bit quantization of the backbone erodes the model's ability to select precise spans of text from a context.
+    \item \textbf{Numeracy (OpenMath).}
+    As the \textbf{target fine-tuning domain}, this is the primary measure of efficacy. Counter-intuitively, QLoRA actually outperforms standard LoRA on OpenMath (AbsDiff \textbf{116.96} vs. \textbf{145.94}, where lower is better). However, both 8B fine-tuned variants perform poorly compared to the smaller 4B-SFT baseline (AbsDiff $\sim$9.0). The difference between the two 8B variants is likely due to quantization acting as a regularizer in a regime where the model is struggling to converge on the numeric task, rather than a genuine capability gain.
+\end{itemize}
+\textbf{Takeaway:} The memory savings of QLoRA are not "free." While performance on the \textbf{fine-tuned task} remains robust, users should anticipate a significant efficacy penalty ($\sim$20\% loss) in \textbf{out-of-domain} extractive tasks where high-precision weight resolution appears critical.
+
+\subsection*{Q7. Which model and fine-tuning combination achieves the highest overall efficacy, and at what computational cost?}
+\textbf{The 4B-SFT is the indisputable \textit{overall} winner for balanced, multi-domain performance on consumer hardware, while the 8B-DoRA is the superior for Out-of-Distribution (OOD) reasoning tasks.}
+\begin{itemize}
+    \item \textbf{The Overall Winner: 4B-SFT (NoPEFT).}
+    We designate the \textbf{Qwen3-4B SFT (NoQuant)} as the overall winner because it is the \emph{only} configuration that succeeds across all three domains.
+    \begin{itemize}
+        \item \textbf{Competence vs. Failure:} While the 8B models offer higher reasoning scores, they experience catastrophic failure on the numerical task (OpenMath AbsDiff $>$ 100). The 4B-SFT achieves high precision in math (AbsDiff \textbf{9.0}) while maintaining respectable performance in ARC (0.826) and SQuAD (32.9).
+        \item \textbf{Hardware Reality:} It delivers this balanced performance using only \textbf{7.87\,GB} of VRAM and ultra-low latency (\textbf{0.61\,s} on Math), making it the only high-performance solution deployable on standard 8GB consumer GPUs.
+    \end{itemize}
+
+    \item \textbf{The OOD Champion: 8B DoRA (NoQuant).}
+    For tasks requiring generalization beyond the training distribution (Out-of-Distribution), the \textbf{8B DoRA} is strictly superior.
+    \begin{itemize}
+        \item \textbf{Reasoning Dominance:} It achieves the highest peaks in the study: \textbf{0.8995 F1} on ARC (+\textbf{8.9\%} over 4B-SFT) and \textbf{48.00 F1} on SQuAD (+\textbf{45.8\%} over 4B-SFT).
+        \item \textbf{DoRA vs. LoRA:} DoRA outperforms standard LoRA on latency (\textbf{2.59\,s} vs 3.39\,s) and matches its high accuracy, proving to be the most efficient method for scaling logic capabilities—provided the user can ignore the poor numerical performance.
+    \end{itemize}
+\end{itemize}
+\textbf{Takeaway:} For the majority of deployments, the \textbf{4B-SFT} is the correct choice, offering the only mathematically competent and hardware-accessible solution. The significantly heavier \textbf{8B-DoRA} should only be selected if the application specifically prioritizes \textbf{Out-of-Distribution (OOD)} generalization over efficiency and numerical precision.
+
+\section{Conclusions \& Takeaways}
+
+\textit{We summarize two complementary views: (i) technical takeaways that guide modeling choices, and (ii) practical conclusions for solution design.}
+
+Based on the empirical data from our comparative study, we derive four critical engineering principles:
+
+\begin{itemize}
+    \item \textbf{SFT on Smaller Models Beats LoRA on Larger Models for In-Domain Tasks.}
+    Model scale is not a proxy for domain competence. The \textbf{4B-SFT} model achieved an order-of-magnitude lower error on numerical tasks (AbsDiff 9.0) compared to the \textbf{8B-LoRA} (AbsDiff 145.9). Fully updating the weights of a smaller architecture allows for tighter calibration to specific distributions than low-rank adapters on a larger, frozen backbone.
+    
+    \item \textbf{Post-Training Quantization is a Last-Resort Optimization.}
+    Our results indicate that 4-bit and 8-bit PTQ should only be utilized when VRAM is the absolute hard bottleneck. In all other scenarios, the trade-off is unfavorable: PTQ introduces a massive latency penalty (significantly slower decoding) and, critically, causes severe accuracy regressions in fine-tuned tasks like OpenMath. Consequently, serving non-quantized models is the only reliable path for maintaining both throughput and numerical precision.
+
+    \item \textbf{QLoRA is an Enabler, Not a Free Lunch.}
+    QLoRA reduces training VRAM by over \textbf{62\%}, enabling 8B training on consumer hardware. However, this comes with an efficacy penalty on precision-sensitive tasks (e.g., \textbf{--19.4\%} on SQuAD compared to standard LoRA). Technical teams must weigh the accessibility of training against the potential loss in extractive granularity.
+
+    \item \textbf{DoRA Offers the Best OOD Efficiency.}
+    Among the parameter-efficient methods for the 8B model, \textbf{DoRA (Weight-Decomposed Low-Rank Adaptation)} proved superior. It matched or exceeded standard LoRA in efficacy while offering improved inference latency on reasoning tasks. It represents the optimal technical path for scaling logical capabilities.
+\end{itemize}
+
+
+
+\subsection*{Practical conclusions}
+
+From a strategic perspective, the decision between model size and training method defines the solution's capabilities. We conclude that \textbf{full supervised fine-tuning (SFT) of smaller architectures is generally the superior strategy for specialized, in-domain applications}; these models can be tightly calibrated to specific formats or numerical rules more effectively than larger models constrained by adapters. Conversely, \textbf{when the use case involves significant Out-of-Distribution (OOD) reasoning} or ambiguous logic, \textbf{utilizing LoRA or DoRA on a larger backbone becomes necessary}, as the inherent reasoning capability of the larger base model outweighs the benefits of full-parameter tuning. Furthermore, \textbf{QLoRA acts as a critical hardware enabler} in this context, \textbf{allowing teams to train and deploy these larger, logic-heavy models on infrastructure that would otherwise be insufficient}, effectively democratizing access to high-parameter intelligence at the cost of minor precision losses.
+
+\begin{thebibliography}{99}
+
+\bibitem{hu2021LoRA} Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang and Weizhu Chen; ``LoRA: Low-Rank Adaptation of Large Language Models'', {\it arXiv:2106.09685}, 2021. Url: https://arxiv.org/abs/2106.09685
+
+\bibitem{qLora} Tim Dettmers, Artidoro Pagnoni, Ari Holtzman and Luke Zettlemoyer; ``QLoRA: Efficient Finetuning of Quantized LLMs'', {\it arXiv:2305.14314}, 2023. Url: https://arxiv.org/abs/2305.14314
+
+\bibitem{qwen} Qwen3-0.6B. Available at {\it https://huggingface.co/Qwen/Qwen3-0.6B}. Accessed on 2 de octubre de 2025.
+
+\bibitem{arc} Ai2\_arc. Available at {\it https://huggingface.co/datasets/allenai/ai2\_arc}. Accessed on 1 de octubre de 2025.
+
+\bibitem{openmath} Open Math Instruct-2. Available at {\it https://huggingface.co/datasets/nvidia/OpenMathInstruct-2}. Accessed on 1 de octubre de 2025.
+
+\bibitem{squad} Squad\_v2. Available at {\it https://huggingface.co/datasets/rajpurkar/squad\_v2}. Accessed on 1 de octubre de 2025.
+
+\bibitem{huggingfaceTransformers} Hugging Face Transformers. Available at {\it https://huggingface.co/docs/transformers/en/index}. Accessed on October 4, 2025.
+
+\end{thebibliography}
+
+
+\end{document}

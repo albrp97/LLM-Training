@@ -4,13 +4,13 @@ Create 1.7B base model snapshot and optionally quantized variants.
 
 import sys
 from pathlib import Path
-sys.path.append(str(Path(__file__).parent))
+sys.path.append(str(Path(__file__).parent.parent))
 
 import json
 import torch
 from datetime import datetime
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
-from quantization_utils import QuantMethod, QuantizationSpec
+from utils.quantization_utils import QuantMethod, QuantizationSpec
 
 def safe_serialize(obj):
     """Converts non-serializable objects to serializable formats."""
