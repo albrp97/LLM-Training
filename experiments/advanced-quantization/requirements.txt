@@ -1,0 +1,38 @@
+# Advanced Quantization Experiment Dependencies
+# Phase 4: meta-llama/Llama-3.2-1B-Instruct quantization
+
+# Core dependencies
+torch>=2.0.0
+transformers>=4.40.0
+accelerate>=0.20.0
+datasets>=2.14.0
+optimum>=1.16.0
+
+# Quantization libraries
+auto-gptq>=0.7.0          # GPTQ quantization
+autoawq>=0.2.0            # AWQ quantization
+# hqq                     # HQQ - may be in transformers already, check first
+
+# Optional quantization tools
+neural-compressor>=2.4.0  # AdaRound and other methods
+# smoothquant             # May need custom install from GitHub
+
+# Evaluation and analysis
+pandas>=2.0.0
+matplotlib>=3.7.0
+seaborn>=0.12.0
+scipy>=1.10.0
+
+# Utilities
+tqdm>=4.65.0
+numpy>=1.24.0
+scikit-learn>=1.3.0
+
+# Development
+jupyter>=1.0.0
+ipython>=8.0.0
+
+# Notes:
+# - Some methods (SmoothQuant, QuaRot) may require custom installation from GitHub repos
+# - Check transformers for built-in HQQ support before installing separate package
+# - Run in WSL/Linux environment
